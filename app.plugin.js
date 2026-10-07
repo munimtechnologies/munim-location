@@ -1,34 +1,24 @@
-const { withAndroidManifest, withInfoPlist } = require('@expo/config-plugins');
+const {
+  AndroidConfig,
+  withAndroidManifest,
+  withInfoPlist,
+} = require('@expo/config-plugins');
 
-const DEFAULT_ANDROID_BLUETOOTH_PERMISSIONS = ['scan', 'connect'];
-const ANDROID_BLUETOOTH_PERMISSIONS = {
-  scan: [
-    { name: 'android.permission.BLUETOOTH', maxSdkVersion: '30' },
-    { name: 'android.permission.BLUETOOTH_ADMIN', maxSdkVersion: '30' },
-    { name: 'android.permission.ACCESS_FINE_LOCATION', maxSdkVersion: '30' },
-    { name: 'android.permission.BLUETOOTH_SCAN' },
-    { name: 'android.permission.BLUETOOTH_CONNECT' },
-  ],
-  connect: [
-    { name: 'android.permission.BLUETOOTH', maxSdkVersion: '30' },
-    { name: 'android.permission.BLUETOOTH_CONNECT' },
-  ],
-  advertise: [
-    { name: 'android.permission.BLUETOOTH', maxSdkVersion: '30' },
-    { name: 'android.permission.BLUETOOTH_ADMIN', maxSdkVersion: '30' },
-    { name: 'android.permission.BLUETOOTH_ADVERTISE' },
-    { name: 'android.permission.BLUETOOTH_CONNECT' },
-  ],
+const DEFAULT_WHEN_IN_USE =
+  'This app uses your location to show where you are and provide location-based features.';
+const DEFAULT_ALWAYS =
+  'This app uses your location in the background to keep location-based features working when the app is closed.';
+const DEFAULT_MOTION =
+  'This app uses the barometer to measure altitude changes.';
+
+const NOTIFICATION_META = {
+  androidNotificationTitle: 'com.munimlocation.notification_title',
+  androidNotificationText: 'com.munimlocation.notification_text',
+  androidNotificationChannelId: 'com.munimlocation.notification_channel_id',
+  androidNotificationChannelName: 'com.munimlocation.notification_channel_name',
+  androidNotificationIcon: 'com.munimlocation.notification_icon',
+  androidNotificationColor: 'com.munimlocation.notification_color',
 };
-
-const ANDROID_SERVICE_PERMISSIONS = [
-  { name: 'android.permission.FOREGROUND_SERVICE' },
-  { name: 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' },
-  { name: 'android.permission.POST_NOTIFICATIONS' },
-];
-
-const IOS_BACKGROUND_MODES = ['bluetooth-central', 'bluetooth-peripheral'];
-const DEFAULT_MULTIPEER_SERVICE_TYPES = ['munim-mesh'];
 
 function ensureArray(parent, key) {
   if (!parent[key]) {
@@ -37,161 +27,127 @@ function ensureArray(parent, key) {
   return parent[key];
 }
 
-function ensureAndroidPermission(manifest, permission) {
+function ensureAndroidPermission(manifest, name, extra = {}) {
   const permissions = ensureArray(manifest, 'uses-permission');
-  const exists = permissions.some(
-    (entry) => entry.$?.['android:name'] === permission.name
-  );
-
-  if (!exists) {
-    const attributes = { 'android:name': permission.name };
-    if (permission.maxSdkVersion) {
-      attributes['android:maxSdkVersion'] = permission.maxSdkVersion;
-    }
-    permissions.push({ $: attributes });
-  }
-}
-
-function normalizeAndroidBluetoothPermissions(value) {
-  if (value === false) {
-    return [];
-  }
-
-  const permissions = value ?? DEFAULT_ANDROID_BLUETOOTH_PERMISSIONS;
-  if (!Array.isArray(permissions)) {
-    throw new TypeError('androidBluetoothPermissions must be an array or false');
-  }
-
-  const normalized = Array.from(new Set(permissions));
-  normalized.forEach((permission) => {
-    if (!ANDROID_BLUETOOTH_PERMISSIONS[permission]) {
-      throw new TypeError(
-        `Unsupported Android Bluetooth permission capability: ${permission}`
-      );
-    }
-  });
-  return normalized;
-}
-
-function ensureAndroidFeature(manifest, featureName, required) {
-  const features = ensureArray(manifest, 'uses-feature');
-  const exists = features.some(
-    (entry) => entry.$?.['android:name'] === featureName
-  );
-
-  if (!exists) {
-    features.push({
-      $: {
-        'android:name': featureName,
-        'android:required': String(required),
-      },
-    });
-  }
-}
-
-function ensureBackgroundService(manifest) {
-  const application = manifest.application?.[0];
-  if (!application) {
+  const existing = permissions.find((entry) => entry.$?.['android:name'] === name);
+  if (existing) {
     return;
   }
+  permissions.push({ $: { 'android:name': name, ...extra } });
+}
 
-  const services = ensureArray(application, 'service');
-  const serviceName = 'com.munimbluetooth.MunimBluetoothBackgroundService';
-  const exists = services.some(
-    (entry) => entry.$?.['android:name'] === serviceName
-  );
-
-  if (!exists) {
-    services.push({
-      $: {
-        'android:name': serviceName,
-        'android:enabled': 'true',
-        'android:exported': 'false',
-        'android:foregroundServiceType': 'connectedDevice',
-      },
-    });
+function ensureMetaData(application, name, value) {
+  const metaData = ensureArray(application, 'meta-data');
+  const existing = metaData.find((entry) => entry.$?.['android:name'] === name);
+  if (existing) {
+    existing.$['android:value'] = String(value);
+    return;
   }
+  metaData.push({ $: { 'android:name': name, 'android:value': String(value) } });
 }
 
-function normalizeMultipeerServiceTypes(value) {
-  if (value === false) {
-    return [];
-  }
-
-  const serviceTypes = Array.isArray(value)
-    ? value
-    : DEFAULT_MULTIPEER_SERVICE_TYPES;
-
-  return serviceTypes
-    .map((serviceType) => String(serviceType).trim())
-    .filter(Boolean)
-    .map((serviceType) =>
-      serviceType
-        .replace(/^_/, '')
-        .replace(/\._tcp$/, '')
-        .replace(/^_/, '')
-    );
-}
-
-function bonjourServiceName(serviceType) {
-  return `_${serviceType}._tcp`;
-}
-
-function withMunimBluetooth(config, options = {}) {
-  const bluetoothBackground =
-    options.bluetoothBackground === undefined ? true : options.bluetoothBackground;
-  const multipeerServiceTypes = normalizeMultipeerServiceTypes(
-    options.multipeerServiceTypes
-  );
-  const androidBluetoothPermissions = normalizeAndroidBluetoothPermissions(
-    options.androidBluetoothPermissions
-  );
+/**
+ * @param {import('@expo/config-plugins').ExpoConfig} config
+ * @param {{
+ *   locationWhenInUsePermission?: string | false,
+ *   locationAlwaysAndWhenInUsePermission?: string | false,
+ *   locationAlwaysPermission?: string | false,
+ *   temporaryFullAccuracyPurposes?: Record<string, string>,
+ *   motionPermission?: string | false,
+ *   isIosBackgroundLocationEnabled?: boolean,
+ *   androidPermissions?: Array<'fine' | 'coarse' | 'background'> | false,
+ *   isAndroidBackgroundLocationEnabled?: boolean,
+ *   isAndroidForegroundServiceEnabled?: boolean,
+ *   androidBootReceiver?: boolean,
+ *   androidNotificationTitle?: string,
+ *   androidNotificationText?: string,
+ *   androidNotificationChannelId?: string,
+ *   androidNotificationChannelName?: string,
+ *   androidNotificationIcon?: string,
+ *   androidNotificationColor?: string,
+ * }} options
+ */
+function withMunimLocation(config, options = {}) {
+  const iosBackground = options.isIosBackgroundLocationEnabled ?? false;
+  const androidBackground = options.isAndroidBackgroundLocationEnabled ?? false;
+  const foregroundService =
+    options.isAndroidForegroundServiceEnabled ?? androidBackground;
 
   config = withInfoPlist(config, (pluginConfig) => {
     const infoPlist = pluginConfig.modResults;
-    infoPlist.NSBluetoothAlwaysUsageDescription =
-      options.bluetoothAlwaysUsageDescription ??
-      infoPlist.NSBluetoothAlwaysUsageDescription ??
-      'This app uses Bluetooth to scan for, connect to, and communicate with nearby devices.';
-    infoPlist.NSBluetoothPeripheralUsageDescription =
-      options.bluetoothPeripheralUsageDescription ??
-      infoPlist.NSBluetoothPeripheralUsageDescription ??
-      'This app uses Bluetooth peripheral mode to advertise services and exchange data with nearby devices.';
-
-    if (multipeerServiceTypes.length > 0) {
-      infoPlist.NSLocalNetworkUsageDescription =
-        options.localNetworkUsageDescription ??
-        infoPlist.NSLocalNetworkUsageDescription ??
-        'This app uses the local network to discover and communicate with nearby peer devices.';
-
-      const bonjourServices = new Set(infoPlist.NSBonjourServices ?? []);
-      multipeerServiceTypes
-        .map(bonjourServiceName)
-        .forEach((serviceName) => bonjourServices.add(serviceName));
-      infoPlist.NSBonjourServices = Array.from(bonjourServices);
+    if (options.locationWhenInUsePermission !== false) {
+      infoPlist.NSLocationWhenInUseUsageDescription =
+        options.locationWhenInUsePermission ??
+        infoPlist.NSLocationWhenInUseUsageDescription ??
+        DEFAULT_WHEN_IN_USE;
     }
-
-    if (bluetoothBackground) {
+    if (options.locationAlwaysAndWhenInUsePermission !== false) {
+      infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription =
+        options.locationAlwaysAndWhenInUsePermission ??
+        infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription ??
+        DEFAULT_ALWAYS;
+    }
+    if (options.locationAlwaysPermission) {
+      infoPlist.NSLocationAlwaysUsageDescription = options.locationAlwaysPermission;
+    }
+    if (options.temporaryFullAccuracyPurposes) {
+      infoPlist.NSLocationTemporaryUsageDescriptionDictionary = {
+        ...(infoPlist.NSLocationTemporaryUsageDescriptionDictionary ?? {}),
+        ...options.temporaryFullAccuracyPurposes,
+      };
+    }
+    if (options.motionPermission) {
+      infoPlist.NSMotionUsageDescription = options.motionPermission;
+    } else if (options.motionPermission === undefined && !infoPlist.NSMotionUsageDescription) {
+      infoPlist.NSMotionUsageDescription = DEFAULT_MOTION;
+    }
+    if (iosBackground) {
       const modes = new Set(infoPlist.UIBackgroundModes ?? []);
-      IOS_BACKGROUND_MODES.forEach((mode) => modes.add(mode));
+      modes.add('location');
       infoPlist.UIBackgroundModes = Array.from(modes);
     }
-
     return pluginConfig;
   });
 
   return withAndroidManifest(config, (pluginConfig) => {
     const manifest = pluginConfig.modResults.manifest;
-    androidBluetoothPermissions
-      .flatMap((permission) => ANDROID_BLUETOOTH_PERMISSIONS[permission])
-      .concat(ANDROID_SERVICE_PERMISSIONS)
-      .forEach((permission) => ensureAndroidPermission(manifest, permission));
-    ensureAndroidFeature(manifest, 'android.hardware.bluetooth', false);
-    ensureAndroidFeature(manifest, 'android.hardware.bluetooth_le', false);
-    ensureBackgroundService(manifest);
+    const requested =
+      options.androidPermissions === false
+        ? []
+        : options.androidPermissions ??
+          (androidBackground ? ['fine', 'coarse', 'background'] : ['fine', 'coarse']);
+
+    if (requested.includes('fine')) {
+      ensureAndroidPermission(manifest, 'android.permission.ACCESS_FINE_LOCATION');
+    }
+    if (requested.includes('coarse') || requested.includes('fine')) {
+      ensureAndroidPermission(manifest, 'android.permission.ACCESS_COARSE_LOCATION');
+    }
+    if (requested.includes('background') || androidBackground) {
+      ensureAndroidPermission(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION');
+    }
+    if (foregroundService) {
+      ensureAndroidPermission(manifest, 'android.permission.FOREGROUND_SERVICE');
+      ensureAndroidPermission(manifest, 'android.permission.FOREGROUND_SERVICE_LOCATION');
+      ensureAndroidPermission(manifest, 'android.permission.POST_NOTIFICATIONS');
+    }
+
+    const application = AndroidConfig.Manifest.getMainApplicationOrThrow(
+      pluginConfig.modResults
+    );
+    if (options.androidBootReceiver) {
+      // The library manifest declares the boot receiver; it only fires once
+      // the app holds this permission.
+      ensureAndroidPermission(manifest, 'android.permission.RECEIVE_BOOT_COMPLETED');
+    }
+    Object.entries(NOTIFICATION_META).forEach(([option, name]) => {
+      if (options[option]) {
+        ensureMetaData(application, name, options[option]);
+      }
+    });
     return pluginConfig;
   });
 }
 
-module.exports = withMunimBluetooth;
-module.exports.default = withMunimBluetooth;
+module.exports = withMunimLocation;
+module.exports.default = withMunimLocation;

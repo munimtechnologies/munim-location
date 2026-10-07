@@ -9,7 +9,7 @@
   "source": "src/index",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src example/App.tsx example/src",
+    "lint": "eslint --no-eslintrc -c example/.eslintrc.js --ext .ts,.tsx,.js src example/App.tsx example/index.js example/src app.plugin.js",
     "clean": "git clean -dfX",
     "release": "semantic-release",
     "build": "npm run typecheck && bob build",

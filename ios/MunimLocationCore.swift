@@ -911,6 +911,22 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
 
     func startAltitude(absolute: Bool) {
         MunimLocationCore.onMain {
+            switch CMAltimeter.authorizationStatus() {
+            case .denied, .restricted:
+                MunimLocationEvents.shared.emit("altitudeError", [
+                    "code": "E_MOTION_PERMISSION_DENIED",
+                    "message": "Motion & Fitness access is off for this app (needs NSMotionUsageDescription)",
+                ])
+                return
+            case .notDetermined:
+                // CoreMotion shows the Motion & Fitness prompt; samples start once allowed.
+                MunimLocationEvents.shared.emit("altitudeError", [
+                    "code": "E_MOTION_PERMISSION_PENDING",
+                    "message": "Waiting for the Motion & Fitness permission prompt",
+                ])
+            default:
+                break
+            }
             if CMAltimeter.isRelativeAltitudeAvailable() {
                 self.altimeter.startRelativeAltitudeUpdates(to: .main) { data, error in
                     if let error {
@@ -1330,8 +1346,9 @@ private final class WatchSession: NSObject, CLLocationManagerDelegate {
                         diagnostic["stationary"] = update.isStationary
                     }
                     let location = update.location
+                    let snapshot = diagnostic
                     DispatchQueue.main.async {
-                        self?.handleLive(location: location, diagnostic: diagnostic)
+                        self?.handleLive(location: location, diagnostic: snapshot)
                     }
                 }
             } catch {
