@@ -113,8 +113,10 @@ const ERROR_PATTERN = /(E_[A-Z_]+): ([\s\S]*)$/
 
 export function toLocationError(error: unknown): LocationError {
   if (error instanceof LocationError) return error
-  const message =
+  const raw =
     error instanceof Error ? error.message : String(error ?? 'Unknown error')
+  // Kotlin exceptions arrive with their Java stack trace appended.
+  const message = raw.split(/\n\s+at /)[0] ?? raw
   const match = ERROR_PATTERN.exec(message)
   if (match) {
     return new LocationError(
