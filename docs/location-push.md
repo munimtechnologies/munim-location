@@ -12,7 +12,8 @@ munim-location covers the app side:
   hex APNs token your server sends `location` pushes to.
 - `stopMonitoringLocationPushes()` stops it (call it on sign-out).
 - The Expo config plugin option `iosLocationPushEntitlement: true` writes the
-  `com.apple.developer.location.push` entitlement for the app.
+  `com.apple.developer.location.push` entitlement for the app, and
+  `aps-environment` when nothing else set it.
 
 The extension itself is native code that iOS runs in its own process, with no
 React Native in it, so you add it to your project yourself. This folder ships
@@ -36,6 +37,12 @@ rejects with `E_UNSUPPORTED` there.
   the extension. Apple grants it on request for an Apple Developer team; until
   it is granted, provisioning profiles cannot include it and
   `startMonitoringLocationPushes()` rejects with `E_LOCATION_PUSH`.
+- An APNs environment: the app's `aps-environment` entitlement (the Push
+  Notifications capability). The plugin adds `development` when it is
+  missing; `expo-notifications` sets it too, and Xcode switches it to
+  `production` when exporting for distribution.
+- The extension embedded in the app. Without it iOS refuses to issue a token
+  (`E_LOCATION_PUSH`: "The app has no Location Push Service Extension").
 - **Always** location access. iOS delivers pushes to the extension only once
   the person has granted Always, so register the token after
   `getPermissionStatus()` reports `background: true`.
@@ -58,13 +65,15 @@ rejects with `E_UNSUPPORTED` there.
 
 ### React Native CLI
 
-Add the entitlement to the app's `.entitlements` file (Xcode: Signing &
-Capabilities → + Capability → Location Push Service Extension adds it once
-Apple has granted it to your team):
+Add the entitlement and an APNs environment to the app's `.entitlements`
+file (Xcode: Signing & Capabilities → + Capability → Push Notifications, and
+Location Push Service Extension once Apple has granted it to your team):
 
 ```xml
 <key>com.apple.developer.location.push</key>
 <true/>
+<key>aps-environment</key>
+<string>development</string>
 ```
 
 ### JavaScript
@@ -228,12 +237,24 @@ async function answerLocationRequest(request: { reportUrl: string; requestId: st
 }
 ```
 
+## Errors
+
+`startMonitoringLocationPushes()` spells out iOS's `CLLocationPushServiceError`:
+
+| Code | Message |
+| --- | --- |
+| `E_LOCATION_PUSH` | The app has no Location Push Service Extension |
+| `E_LOCATION_PUSH` | The app has no APNs environment: add the aps-environment entitlement |
+| `E_LOCATION_PUSH` | The app lacks the com.apple.developer.location.push entitlement |
+| `E_UNSUPPORTED` | Android, iOS before 15, or a platform iOS does not support (for example an iPad app on a Mac) |
+
 ## Testing
 
 - `startMonitoringLocationPushes()` resolving with a 64+ character hex token
-  proves the entitlement is provisioned. The example app's **Run checks**
-  covers it (`startMonitoringLocationPushes / stop`), and records a skip with
-  iOS's reason when the entitlement is missing.
+  proves the app, the extension, and the provisioning are set up. The example
+  app embeds the sample extension (target `LocationPush`, built straight from
+  this folder) and its **Run checks** covers the call
+  (`startMonitoringLocationPushes / stop`).
 - To exercise the extension end to end, send a push to the token with the
   APNs development environment (`api.sandbox.push.apple.com`) for debug
   builds, with the device locked or the app terminated, and Always access

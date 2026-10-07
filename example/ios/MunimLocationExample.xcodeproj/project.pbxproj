@@ -9,11 +9,38 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-MunimLocationExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-MunimLocationExample.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		33C39A884F9E3AB50BAAACBD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3E7222FD2BD79E9EF78BC04F /* Foundation.framework */; };
+		5CAEBB1B6DE7374A5BE1D3D4 /* LocationPushService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC799D24424E98C4560A15A3 /* LocationPushService.swift */; };
 		5EC89D8B3C7856FE41BF2F91 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		7D02D3AA798CC9B2ADE9FA18 /* LocationPush.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9633127A836FC4912F57E9BA /* LocationPush.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		D9D5367EF7602620C357EEC4 /* ChecksReport.m in Sources */ = {isa = PBXBuildFile; fileRef = 649BFAC0E84D15281E60B9BB /* ChecksReport.m */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1E2714528DF6566861DA41CF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C6F4F80142FE1A0304205BBF;
+			remoteInfo = LocationPush;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9093AA4C98868B5B9304C2B2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7D02D3AA798CC9B2ADE9FA18 /* LocationPush.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* MunimLocationExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MunimLocationExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -21,15 +48,28 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = MunimLocationExample/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = MunimLocationExample/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-MunimLocationExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MunimLocationExample.debug.xcconfig"; path = "Target Support Files/Pods-MunimLocationExample/Pods-MunimLocationExample.debug.xcconfig"; sourceTree = "<group>"; };
+		3E7222FD2BD79E9EF78BC04F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5709B34CF0A7D63546082F79 /* Pods-MunimLocationExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MunimLocationExample.release.xcconfig"; path = "Target Support Files/Pods-MunimLocationExample/Pods-MunimLocationExample.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-MunimLocationExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-MunimLocationExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6378A6765D53B70E3F632E0C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		649BFAC0E84D15281E60B9BB /* ChecksReport.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ChecksReport.m; path = MunimLocationExample/ChecksReport.m; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = MunimLocationExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = MunimLocationExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		9633127A836FC4912F57E9BA /* LocationPush.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LocationPush.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E144CACF87547500F16426F5 /* LocationPush.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = LocationPush.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		FC799D24424E98C4560A15A3 /* LocationPushService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LocationPushService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0DCFBAD6B20A8E49C17525C3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				33C39A884F9E3AB50BAAACBD /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -54,13 +94,41 @@
 			name = MunimLocationExample;
 			sourceTree = "<group>";
 		};
+		19A2DC4300D67EA0D9AF0A24 /* LocationPush */ = {
+			isa = PBXGroup;
+			children = (
+				E144CACF87547500F16426F5 /* LocationPush.entitlements */,
+			);
+			name = LocationPush;
+			path = LocationPush;
+			sourceTree = "<group>";
+		};
+		25B3ED39D57F122C884F0252 /* LocationPushSample */ = {
+			isa = PBXGroup;
+			children = (
+				FC799D24424E98C4560A15A3 /* LocationPushService.swift */,
+				6378A6765D53B70E3F632E0C /* Info.plist */,
+			);
+			name = LocationPushSample;
+			path = "../../docs/location-push";
+			sourceTree = "<group>";
+		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-MunimLocationExample.a */,
+				769E574ED9D20F490E82E900 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		769E574ED9D20F490E82E900 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3E7222FD2BD79E9EF78BC04F /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -78,6 +146,8 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				19A2DC4300D67EA0D9AF0A24 /* LocationPush */,
+				25B3ED39D57F122C884F0252 /* LocationPushSample */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -88,6 +158,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* MunimLocationExample.app */,
+				9633127A836FC4912F57E9BA /* LocationPush.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -112,6 +183,7 @@
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
+				9093AA4C98868B5B9304C2B2 /* Embed Foundation Extensions */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
@@ -119,11 +191,29 @@
 			buildRules = (
 			);
 			dependencies = (
+				5D22A3C2DF93A02BBF81F750 /* PBXTargetDependency */,
 			);
 			name = MunimLocationExample;
 			productName = MunimLocationExample;
 			productReference = 13B07F961A680F5B00A75B9A /* MunimLocationExample.app */;
 			productType = "com.apple.product-type.application";
+		};
+		C6F4F80142FE1A0304205BBF /* LocationPush */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1FE9E6A6282D5753846081FB /* Build configuration list for PBXNativeTarget "LocationPush" */;
+			buildPhases = (
+				33D187D9E1EC99A9421BA32F /* Sources */,
+				0DCFBAD6B20A8E49C17525C3 /* Frameworks */,
+				688A6630EBEAD28515F4D16C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LocationPush;
+			productName = LocationPush;
+			productReference = 9633127A836FC4912F57E9BA /* LocationPush.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -152,6 +242,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* MunimLocationExample */,
+				C6F4F80142FE1A0304205BBF /* LocationPush */,
 			);
 		};
 /* End PBXProject section */
@@ -164,6 +255,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				5EC89D8B3C7856FE41BF2F91 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		688A6630EBEAD28515F4D16C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,7 +352,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		33D187D9E1EC99A9421BA32F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5CAEBB1B6DE7374A5BE1D3D4 /* LocationPushService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5D22A3C2DF93A02BBF81F750 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LocationPush;
+			target = C6F4F80142FE1A0304205BBF /* LocationPush */;
+			targetProxy = 1E2714528DF6566861DA41CF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -318,6 +433,61 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		3365B50348E38A39C5A3DEB0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = LocationPush/LocationPush.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6T5J6U2UVT;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "../../docs/location-push/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.munimtech.munimlocationexample.LocationPush;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		73F9619374460B947F086AF3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = LocationPush/LocationPush.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6T5J6U2UVT;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "../../docs/location-push/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.munimtech.munimlocationexample.LocationPush;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -485,6 +655,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1FE9E6A6282D5753846081FB /* Build configuration list for PBXNativeTarget "LocationPush" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73F9619374460B947F086AF3 /* Release */,
+				3365B50348E38A39C5A3DEB0 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

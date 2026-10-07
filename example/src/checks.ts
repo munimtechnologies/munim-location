@@ -563,7 +563,7 @@ export async function runChecks(
     } catch (error) {
       const err = error as Location.LocationError
       expect(err.code === 'E_LOCATION_PUSH', `expected E_LOCATION_PUSH, got ${err.code}`)
-      throw new Skip(`iOS refused (entitlement not provisioned?): ${err.message}`)
+      throw new Skip(`iOS refused (provisioning without the location push entitlement?): ${err.message}`)
     } finally {
       Location.stopMonitoringLocationPushes()
     }

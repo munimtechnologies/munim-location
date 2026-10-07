@@ -100,7 +100,7 @@ Add the config plugin to `app.json`:
 | `temporaryFullAccuracyPurposes` | not set | `NSLocationTemporaryUsageDescriptionDictionary` (keys are purpose keys). |
 | `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter). `false` skips it. |
 | `isIosBackgroundLocationEnabled` | `false` | Adds `location` to `UIBackgroundModes`. |
-| `iosLocationPushEntitlement` | `false` | Adds the `com.apple.developer.location.push` entitlement for `startMonitoringLocationPushes()`. The Location Push Service Extension is a separate target; see [docs/location-push.md](docs/location-push.md). |
+| `iosLocationPushEntitlement` | `false` | Adds the `com.apple.developer.location.push` entitlement for `startMonitoringLocationPushes()`, and `aps-environment: development` when nothing else set it (iOS issues tokens only with an APNs environment). The Location Push Service Extension is a separate target; see [docs/location-push.md](docs/location-push.md). |
 | `androidPermissions` | `['fine', 'coarse']` | Any of `fine`, `coarse`, `background`; `false` manages them yourself. |
 | `isAndroidBackgroundLocationEnabled` | `false` | Adds `ACCESS_BACKGROUND_LOCATION`. |
 | `isAndroidForegroundServiceEnabled` | same as background | Adds `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`. |
@@ -813,7 +813,7 @@ Android `Geocoder.isPresent()`; always `true` on iOS.
 
 #### `startMonitoringLocationPushes()`
 
-iOS 15+: starts monitoring APNs `location` pushes and resolves with the hex APNs token your server sends them to (`apns-push-type: location`, topic `<bundle id>.location-query`). A push wakes the app's Location Push Service Extension, which takes a fix and reports it; iOS delivers pushes only while the person has granted Always access. Needs the `com.apple.developer.location.push` entitlement (Expo: `iosLocationPushEntitlement: true`). Rejects with `E_LOCATION_PUSH` when iOS refuses (usually a missing entitlement) and with `E_UNSUPPORTED` on Android. Setup, a sample extension, and the payload contract: [docs/location-push.md](docs/location-push.md).
+iOS 15+: starts monitoring APNs `location` pushes and resolves with the hex APNs token your server sends them to (`apns-push-type: location`, topic `<bundle id>.location-query`). A push wakes the app's Location Push Service Extension, which takes a fix and reports it; iOS delivers pushes only while the person has granted Always access. Needs the `com.apple.developer.location.push` entitlement (Expo: `iosLocationPushEntitlement: true`). Rejects with `E_LOCATION_PUSH` when iOS refuses, with the reason spelled out (no extension embedded, no `aps-environment`, or no entitlement), and with `E_UNSUPPORTED` on Android. Setup, a sample extension, and the payload contract: [docs/location-push.md](docs/location-push.md).
 
 **Returns:** `Promise<string>`
 
@@ -880,7 +880,7 @@ Use `addEventListener(eventName, callback)`; it returns an unsubscribe function.
 5. **Geofences never fire on Android 10+**: geofencing needs both fine and background location.
 6. **Android geocoding returns nothing**: `isGeocoderAvailable()` is `false` on devices without a geocoder backend (no Google Play services).
 7. **No altitude events on iOS**: add `NSMotionUsageDescription` and allow Motion & Fitness.
-8. **`E_LOCATION_PUSH`**: iOS refused location push monitoring. The app's provisioning profile must include `com.apple.developer.location.push` (Apple grants it on request; Expo: `iosLocationPushEntitlement: true`).
+8. **`E_LOCATION_PUSH`**: iOS refused location push monitoring; the message says why. The app needs the `com.apple.developer.location.push` entitlement in its provisioning profile (Apple grants it on request; Expo: `iosLocationPushEntitlement: true`), an `aps-environment` entitlement, and an embedded Location Push Service Extension ([docs/location-push.md](docs/location-push.md)).
 
 ### Xcode 27
 
