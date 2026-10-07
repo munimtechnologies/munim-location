@@ -566,6 +566,20 @@ namespace margelo::nitro::munimlocation {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<std::string>> startMonitoringLocationPushes() override {
+      auto __result = _swiftPart.startMonitoringLocationPushes();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline void stopMonitoringLocationPushes() override {
+      auto __result = _swiftPart.stopMonitoringLocationPushes();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline std::shared_ptr<Promise<bool>> isLocationAvailable() override {
       auto __result = _swiftPart.isLocationAvailable();
       if (__result.hasError()) [[unlikely]] {

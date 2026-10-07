@@ -65,10 +65,11 @@ namespace margelo::nitro::munimlocation {
     bool geocoderAvailable     SWIFT_PRIVATE;
     bool mockLocationAvailable     SWIFT_PRIVATE;
     bool backgroundLocationModeEnabled     SWIFT_PRIVATE;
+    bool locationPushAvailable     SWIFT_PRIVATE;
 
   public:
     LocationCapabilities() = default;
-    explicit LocationCapabilities(std::string platform, std::string osVersion, bool locationServicesEnabled, bool headingAvailable, bool significantChangeAvailable, bool visitsAvailable, bool regionMonitoringAvailable, double maxMonitoredRegions, std::string geofencingEngine, bool beaconRangingAvailable, bool beaconMonitoringAvailable, bool liveUpdatesAvailable, bool serviceSessionAvailable, bool backgroundActivitySessionAvailable, bool temporaryFullAccuracyAvailable, bool altimeterAvailable, bool absoluteAltitudeAvailable, bool gnssStatusAvailable, bool nmeaAvailable, bool gnssMeasurementsAvailable, bool gnssNavigationMessagesAvailable, bool fusedLocationAvailable, bool fusedOrientationAvailable, bool geocoderAvailable, bool mockLocationAvailable, bool backgroundLocationModeEnabled): platform(platform), osVersion(osVersion), locationServicesEnabled(locationServicesEnabled), headingAvailable(headingAvailable), significantChangeAvailable(significantChangeAvailable), visitsAvailable(visitsAvailable), regionMonitoringAvailable(regionMonitoringAvailable), maxMonitoredRegions(maxMonitoredRegions), geofencingEngine(geofencingEngine), beaconRangingAvailable(beaconRangingAvailable), beaconMonitoringAvailable(beaconMonitoringAvailable), liveUpdatesAvailable(liveUpdatesAvailable), serviceSessionAvailable(serviceSessionAvailable), backgroundActivitySessionAvailable(backgroundActivitySessionAvailable), temporaryFullAccuracyAvailable(temporaryFullAccuracyAvailable), altimeterAvailable(altimeterAvailable), absoluteAltitudeAvailable(absoluteAltitudeAvailable), gnssStatusAvailable(gnssStatusAvailable), nmeaAvailable(nmeaAvailable), gnssMeasurementsAvailable(gnssMeasurementsAvailable), gnssNavigationMessagesAvailable(gnssNavigationMessagesAvailable), fusedLocationAvailable(fusedLocationAvailable), fusedOrientationAvailable(fusedOrientationAvailable), geocoderAvailable(geocoderAvailable), mockLocationAvailable(mockLocationAvailable), backgroundLocationModeEnabled(backgroundLocationModeEnabled) {}
+    explicit LocationCapabilities(std::string platform, std::string osVersion, bool locationServicesEnabled, bool headingAvailable, bool significantChangeAvailable, bool visitsAvailable, bool regionMonitoringAvailable, double maxMonitoredRegions, std::string geofencingEngine, bool beaconRangingAvailable, bool beaconMonitoringAvailable, bool liveUpdatesAvailable, bool serviceSessionAvailable, bool backgroundActivitySessionAvailable, bool temporaryFullAccuracyAvailable, bool altimeterAvailable, bool absoluteAltitudeAvailable, bool gnssStatusAvailable, bool nmeaAvailable, bool gnssMeasurementsAvailable, bool gnssNavigationMessagesAvailable, bool fusedLocationAvailable, bool fusedOrientationAvailable, bool geocoderAvailable, bool mockLocationAvailable, bool backgroundLocationModeEnabled, bool locationPushAvailable): platform(platform), osVersion(osVersion), locationServicesEnabled(locationServicesEnabled), headingAvailable(headingAvailable), significantChangeAvailable(significantChangeAvailable), visitsAvailable(visitsAvailable), regionMonitoringAvailable(regionMonitoringAvailable), maxMonitoredRegions(maxMonitoredRegions), geofencingEngine(geofencingEngine), beaconRangingAvailable(beaconRangingAvailable), beaconMonitoringAvailable(beaconMonitoringAvailable), liveUpdatesAvailable(liveUpdatesAvailable), serviceSessionAvailable(serviceSessionAvailable), backgroundActivitySessionAvailable(backgroundActivitySessionAvailable), temporaryFullAccuracyAvailable(temporaryFullAccuracyAvailable), altimeterAvailable(altimeterAvailable), absoluteAltitudeAvailable(absoluteAltitudeAvailable), gnssStatusAvailable(gnssStatusAvailable), nmeaAvailable(nmeaAvailable), gnssMeasurementsAvailable(gnssMeasurementsAvailable), gnssNavigationMessagesAvailable(gnssNavigationMessagesAvailable), fusedLocationAvailable(fusedLocationAvailable), fusedOrientationAvailable(fusedOrientationAvailable), geocoderAvailable(geocoderAvailable), mockLocationAvailable(mockLocationAvailable), backgroundLocationModeEnabled(backgroundLocationModeEnabled), locationPushAvailable(locationPushAvailable) {}
 
   public:
     friend bool operator==(const LocationCapabilities& lhs, const LocationCapabilities& rhs) = default;
@@ -109,7 +110,8 @@ namespace margelo::nitro {
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fusedOrientationAvailable"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "geocoderAvailable"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mockLocationAvailable"))),
-        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "backgroundLocationModeEnabled")))
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "backgroundLocationModeEnabled"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "locationPushAvailable")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::munimlocation::LocationCapabilities& arg) {
@@ -140,6 +142,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "geocoderAvailable"), JSIConverter<bool>::toJSI(runtime, arg.geocoderAvailable));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "mockLocationAvailable"), JSIConverter<bool>::toJSI(runtime, arg.mockLocationAvailable));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "backgroundLocationModeEnabled"), JSIConverter<bool>::toJSI(runtime, arg.backgroundLocationModeEnabled));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "locationPushAvailable"), JSIConverter<bool>::toJSI(runtime, arg.locationPushAvailable));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -176,6 +179,7 @@ namespace margelo::nitro {
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "geocoderAvailable")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mockLocationAvailable")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "backgroundLocationModeEnabled")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "locationPushAvailable")))) return false;
       return true;
     }
   };

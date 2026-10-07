@@ -327,6 +327,16 @@ final class HybridMunimLocation: HybridMunimLocationSpec {
         Self.unsupported("Mock locations (simulate locations with an Xcode GPX scheme instead)")
     }
 
+    // MARK: - Location push
+
+    func startMonitoringLocationPushes() throws -> Promise<String> {
+        Self.promise { core.startMonitoringLocationPushes($0) }
+    }
+
+    func stopMonitoringLocationPushes() throws {
+        core.stopMonitoringLocationPushes()
+    }
+
     // MARK: - Utilities
 
     func isLocationAvailable() throws -> Promise<Bool> {

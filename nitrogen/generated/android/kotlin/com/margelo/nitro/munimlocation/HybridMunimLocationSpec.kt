@@ -257,6 +257,14 @@ abstract class HybridMunimLocationSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun startMonitoringLocationPushes(): Promise<String>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun stopMonitoringLocationPushes(): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun isLocationAvailable(): Promise<Boolean>
   
   @DoNotStrip

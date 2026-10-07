@@ -68,6 +68,8 @@ public protocol HybridMunimLocationSpec_protocol: HybridObject {
   func reverseGeocode(latitude: Double, longitude: Double, options: GeocodeOptions) throws -> Promise<[Address]>
   func setMockLocationEnabled(enabled: Bool) throws -> Promise<Bool>
   func setMockLocation(location: MockLocation) throws -> Promise<Void>
+  func startMonitoringLocationPushes() throws -> Promise<String>
+  func stopMonitoringLocationPushes() throws -> Void
   func isLocationAvailable() throws -> Promise<Bool>
   func getCapabilities() throws -> Promise<LocationCapabilities>
 }

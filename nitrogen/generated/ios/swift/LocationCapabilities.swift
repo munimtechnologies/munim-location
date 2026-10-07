@@ -18,8 +18,8 @@ public extension LocationCapabilities {
   /**
    * Create a new instance of `LocationCapabilities`.
    */
-  init(platform: String, osVersion: String, locationServicesEnabled: Bool, headingAvailable: Bool, significantChangeAvailable: Bool, visitsAvailable: Bool, regionMonitoringAvailable: Bool, maxMonitoredRegions: Double, geofencingEngine: String, beaconRangingAvailable: Bool, beaconMonitoringAvailable: Bool, liveUpdatesAvailable: Bool, serviceSessionAvailable: Bool, backgroundActivitySessionAvailable: Bool, temporaryFullAccuracyAvailable: Bool, altimeterAvailable: Bool, absoluteAltitudeAvailable: Bool, gnssStatusAvailable: Bool, nmeaAvailable: Bool, gnssMeasurementsAvailable: Bool, gnssNavigationMessagesAvailable: Bool, fusedLocationAvailable: Bool, fusedOrientationAvailable: Bool, geocoderAvailable: Bool, mockLocationAvailable: Bool, backgroundLocationModeEnabled: Bool) {
-    self.init(std.string(platform), std.string(osVersion), locationServicesEnabled, headingAvailable, significantChangeAvailable, visitsAvailable, regionMonitoringAvailable, maxMonitoredRegions, std.string(geofencingEngine), beaconRangingAvailable, beaconMonitoringAvailable, liveUpdatesAvailable, serviceSessionAvailable, backgroundActivitySessionAvailable, temporaryFullAccuracyAvailable, altimeterAvailable, absoluteAltitudeAvailable, gnssStatusAvailable, nmeaAvailable, gnssMeasurementsAvailable, gnssNavigationMessagesAvailable, fusedLocationAvailable, fusedOrientationAvailable, geocoderAvailable, mockLocationAvailable, backgroundLocationModeEnabled)
+  init(platform: String, osVersion: String, locationServicesEnabled: Bool, headingAvailable: Bool, significantChangeAvailable: Bool, visitsAvailable: Bool, regionMonitoringAvailable: Bool, maxMonitoredRegions: Double, geofencingEngine: String, beaconRangingAvailable: Bool, beaconMonitoringAvailable: Bool, liveUpdatesAvailable: Bool, serviceSessionAvailable: Bool, backgroundActivitySessionAvailable: Bool, temporaryFullAccuracyAvailable: Bool, altimeterAvailable: Bool, absoluteAltitudeAvailable: Bool, gnssStatusAvailable: Bool, nmeaAvailable: Bool, gnssMeasurementsAvailable: Bool, gnssNavigationMessagesAvailable: Bool, fusedLocationAvailable: Bool, fusedOrientationAvailable: Bool, geocoderAvailable: Bool, mockLocationAvailable: Bool, backgroundLocationModeEnabled: Bool, locationPushAvailable: Bool) {
+    self.init(std.string(platform), std.string(osVersion), locationServicesEnabled, headingAvailable, significantChangeAvailable, visitsAvailable, regionMonitoringAvailable, maxMonitoredRegions, std.string(geofencingEngine), beaconRangingAvailable, beaconMonitoringAvailable, liveUpdatesAvailable, serviceSessionAvailable, backgroundActivitySessionAvailable, temporaryFullAccuracyAvailable, altimeterAvailable, absoluteAltitudeAvailable, gnssStatusAvailable, nmeaAvailable, gnssMeasurementsAvailable, gnssNavigationMessagesAvailable, fusedLocationAvailable, fusedOrientationAvailable, geocoderAvailable, mockLocationAvailable, backgroundLocationModeEnabled, locationPushAvailable)
   }
 
   @inline(__always)
@@ -150,5 +150,10 @@ public extension LocationCapabilities {
   @inline(__always)
   var backgroundLocationModeEnabled: Bool {
     return self.__backgroundLocationModeEnabled
+  }
+  
+  @inline(__always)
+  var locationPushAvailable: Bool {
+    return self.__locationPushAvailable
   }
 }

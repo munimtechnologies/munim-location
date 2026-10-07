@@ -83,6 +83,8 @@ namespace margelo::nitro::munimlocation {
       jboolean mockLocationAvailable = this->getFieldValue(fieldMockLocationAvailable);
       static const auto fieldBackgroundLocationModeEnabled = clazz->getField<jboolean>("backgroundLocationModeEnabled");
       jboolean backgroundLocationModeEnabled = this->getFieldValue(fieldBackgroundLocationModeEnabled);
+      static const auto fieldLocationPushAvailable = clazz->getField<jboolean>("locationPushAvailable");
+      jboolean locationPushAvailable = this->getFieldValue(fieldLocationPushAvailable);
       return LocationCapabilities(
         platform->toStdString(),
         osVersion->toStdString(),
@@ -109,7 +111,8 @@ namespace margelo::nitro::munimlocation {
         static_cast<bool>(fusedOrientationAvailable),
         static_cast<bool>(geocoderAvailable),
         static_cast<bool>(mockLocationAvailable),
-        static_cast<bool>(backgroundLocationModeEnabled)
+        static_cast<bool>(backgroundLocationModeEnabled),
+        static_cast<bool>(locationPushAvailable)
       );
     }
 
@@ -119,7 +122,7 @@ namespace margelo::nitro::munimlocation {
      */
     [[maybe_unused]]
     static jni::local_ref<JLocationCapabilities::javaobject> fromCpp(const LocationCapabilities& value) {
-      using JSignature = JLocationCapabilities(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jboolean, jboolean, jboolean, jboolean, jboolean, double, jni::alias_ref<jni::JString>, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean);
+      using JSignature = JLocationCapabilities(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jboolean, jboolean, jboolean, jboolean, jboolean, double, jni::alias_ref<jni::JString>, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -149,7 +152,8 @@ namespace margelo::nitro::munimlocation {
         value.fusedOrientationAvailable,
         value.geocoderAvailable,
         value.mockLocationAvailable,
-        value.backgroundLocationModeEnabled
+        value.backgroundLocationModeEnabled,
+        value.locationPushAvailable
       );
     }
   };

@@ -1,6 +1,7 @@
 const {
   AndroidConfig,
   withAndroidManifest,
+  withEntitlementsPlist,
   withInfoPlist,
 } = require('@expo/config-plugins');
 
@@ -55,6 +56,7 @@ function ensureMetaData(application, name, value) {
  *   temporaryFullAccuracyPurposes?: Record<string, string>,
  *   motionPermission?: string | false,
  *   isIosBackgroundLocationEnabled?: boolean,
+ *   iosLocationPushEntitlement?: boolean,
  *   androidPermissions?: Array<'fine' | 'coarse' | 'background'> | false,
  *   isAndroidBackgroundLocationEnabled?: boolean,
  *   isAndroidForegroundServiceEnabled?: boolean,
@@ -108,6 +110,15 @@ function withMunimLocation(config, options = {}) {
     }
     return pluginConfig;
   });
+
+  if (options.iosLocationPushEntitlement) {
+    // startMonitoringLocationPushes() needs this on the app; the Location
+    // Push Service Extension target needs it too (see docs/location-push.md).
+    config = withEntitlementsPlist(config, (pluginConfig) => {
+      pluginConfig.modResults['com.apple.developer.location.push'] = true;
+      return pluginConfig;
+    });
+  }
 
   return withAndroidManifest(config, (pluginConfig) => {
     const manifest = pluginConfig.modResults.manifest;

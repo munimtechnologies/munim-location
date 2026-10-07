@@ -95,7 +95,10 @@ data class LocationCapabilities(
   val mockLocationAvailable: Boolean,
   @DoNotStrip
   @Keep
-  val backgroundLocationModeEnabled: Boolean
+  val backgroundLocationModeEnabled: Boolean,
+  @DoNotStrip
+  @Keep
+  val locationPushAvailable: Boolean
 ) {
   /* primary constructor */
 
@@ -128,6 +131,7 @@ data class LocationCapabilities(
       && Objects.deepEquals(this.geocoderAvailable, other.geocoderAvailable)
       && Objects.deepEquals(this.mockLocationAvailable, other.mockLocationAvailable)
       && Objects.deepEquals(this.backgroundLocationModeEnabled, other.backgroundLocationModeEnabled)
+      && Objects.deepEquals(this.locationPushAvailable, other.locationPushAvailable)
   }
 
   override fun hashCode(): Int {
@@ -157,7 +161,8 @@ data class LocationCapabilities(
       fusedOrientationAvailable,
       geocoderAvailable,
       mockLocationAvailable,
-      backgroundLocationModeEnabled
+      backgroundLocationModeEnabled,
+      locationPushAvailable
     ).contentDeepHashCode()
   }
 
@@ -169,8 +174,8 @@ data class LocationCapabilities(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(platform: String, osVersion: String, locationServicesEnabled: Boolean, headingAvailable: Boolean, significantChangeAvailable: Boolean, visitsAvailable: Boolean, regionMonitoringAvailable: Boolean, maxMonitoredRegions: Double, geofencingEngine: String, beaconRangingAvailable: Boolean, beaconMonitoringAvailable: Boolean, liveUpdatesAvailable: Boolean, serviceSessionAvailable: Boolean, backgroundActivitySessionAvailable: Boolean, temporaryFullAccuracyAvailable: Boolean, altimeterAvailable: Boolean, absoluteAltitudeAvailable: Boolean, gnssStatusAvailable: Boolean, nmeaAvailable: Boolean, gnssMeasurementsAvailable: Boolean, gnssNavigationMessagesAvailable: Boolean, fusedLocationAvailable: Boolean, fusedOrientationAvailable: Boolean, geocoderAvailable: Boolean, mockLocationAvailable: Boolean, backgroundLocationModeEnabled: Boolean): LocationCapabilities {
-      return LocationCapabilities(platform, osVersion, locationServicesEnabled, headingAvailable, significantChangeAvailable, visitsAvailable, regionMonitoringAvailable, maxMonitoredRegions, geofencingEngine, beaconRangingAvailable, beaconMonitoringAvailable, liveUpdatesAvailable, serviceSessionAvailable, backgroundActivitySessionAvailable, temporaryFullAccuracyAvailable, altimeterAvailable, absoluteAltitudeAvailable, gnssStatusAvailable, nmeaAvailable, gnssMeasurementsAvailable, gnssNavigationMessagesAvailable, fusedLocationAvailable, fusedOrientationAvailable, geocoderAvailable, mockLocationAvailable, backgroundLocationModeEnabled)
+    private fun fromCpp(platform: String, osVersion: String, locationServicesEnabled: Boolean, headingAvailable: Boolean, significantChangeAvailable: Boolean, visitsAvailable: Boolean, regionMonitoringAvailable: Boolean, maxMonitoredRegions: Double, geofencingEngine: String, beaconRangingAvailable: Boolean, beaconMonitoringAvailable: Boolean, liveUpdatesAvailable: Boolean, serviceSessionAvailable: Boolean, backgroundActivitySessionAvailable: Boolean, temporaryFullAccuracyAvailable: Boolean, altimeterAvailable: Boolean, absoluteAltitudeAvailable: Boolean, gnssStatusAvailable: Boolean, nmeaAvailable: Boolean, gnssMeasurementsAvailable: Boolean, gnssNavigationMessagesAvailable: Boolean, fusedLocationAvailable: Boolean, fusedOrientationAvailable: Boolean, geocoderAvailable: Boolean, mockLocationAvailable: Boolean, backgroundLocationModeEnabled: Boolean, locationPushAvailable: Boolean): LocationCapabilities {
+      return LocationCapabilities(platform, osVersion, locationServicesEnabled, headingAvailable, significantChangeAvailable, visitsAvailable, regionMonitoringAvailable, maxMonitoredRegions, geofencingEngine, beaconRangingAvailable, beaconMonitoringAvailable, liveUpdatesAvailable, serviceSessionAvailable, backgroundActivitySessionAvailable, temporaryFullAccuracyAvailable, altimeterAvailable, absoluteAltitudeAvailable, gnssStatusAvailable, nmeaAvailable, gnssMeasurementsAvailable, gnssNavigationMessagesAvailable, fusedLocationAvailable, fusedOrientationAvailable, geocoderAvailable, mockLocationAvailable, backgroundLocationModeEnabled, locationPushAvailable)
     }
   }
 }

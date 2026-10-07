@@ -980,6 +980,47 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    // MARK: - Location push (iOS 15+)
+
+    /// Starts monitoring APNs `location` pushes. The token is what a server
+    /// sends `location` pushes to (apns-push-type: location, topic
+    /// `<bundle id>.location-query`). The pushes wake the app's Location Push
+    /// Service Extension, and only once the person granted Always access.
+    /// Needs the `com.apple.developer.location.push` entitlement.
+    func startMonitoringLocationPushes(_ completion: @escaping (Result<String, Error>) -> Void) {
+        MunimLocationCore.onMain {
+            guard #available(iOS 15.0, *) else {
+                completion(.failure(MunimLocationError.unsupported("Location push monitoring (iOS 15+)")))
+                return
+            }
+            self.authManager.startMonitoringLocationPushes { token, error in
+                if let error {
+                    completion(.failure(MunimLocationError.make(
+                        "E_LOCATION_PUSH",
+                        "\(error.localizedDescription) (\((error as NSError).domain) \((error as NSError).code))"
+                    )))
+                    return
+                }
+                guard let token, !token.isEmpty else {
+                    completion(.failure(MunimLocationError.make(
+                        "E_LOCATION_PUSH",
+                        "iOS returned no location push token"
+                    )))
+                    return
+                }
+                completion(.success(token.map { String(format: "%02x", $0) }.joined()))
+            }
+        }
+    }
+
+    func stopMonitoringLocationPushes() {
+        MunimLocationCore.onMain {
+            if #available(iOS 15.0, *) {
+                self.authManager.stopMonitoringLocationPushes()
+            }
+        }
+    }
+
     // MARK: - Capabilities
 
     func capabilities(_ completion: @escaping (LocationCapabilities) -> Void) {
@@ -997,6 +1038,8 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
                     backgroundActivity = true
                 }
                 if #available(iOS 18.0, *) { serviceSession = true }
+                var locationPush = false
+                if #available(iOS 15.0, *) { locationPush = true }
                 completion(LocationCapabilities(
                     platform: "ios",
                     osVersion: UIDevice.current.systemVersion,
@@ -1023,7 +1066,8 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
                     fusedOrientationAvailable: false,
                     geocoderAvailable: true,
                     mockLocationAvailable: false,
-                    backgroundLocationModeEnabled: self.backgroundModeEnabled
+                    backgroundLocationModeEnabled: self.backgroundModeEnabled,
+                    locationPushAvailable: locationPush
                 ))
             }
         }

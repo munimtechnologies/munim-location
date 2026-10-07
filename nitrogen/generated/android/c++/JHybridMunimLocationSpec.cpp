@@ -771,6 +771,26 @@ namespace margelo::nitro::munimlocation {
       return __promise;
     }();
   }
+  std::shared_ptr<Promise<std::string>> JHybridMunimLocationSpec::startMonitoringLocationPushes() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("startMonitoringLocationPushes");
+    auto __result = method(_javaPart);
+    return [&]() {
+      auto __promise = Promise<std::string>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<jni::JString>(__boxedResult);
+        __promise->resolve(__result->toStdString());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  void JHybridMunimLocationSpec::stopMonitoringLocationPushes() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("stopMonitoringLocationPushes");
+    method(_javaPart);
+  }
   std::shared_ptr<Promise<bool>> JHybridMunimLocationSpec::isLocationAvailable() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("isLocationAvailable");
     auto __result = method(_javaPart);

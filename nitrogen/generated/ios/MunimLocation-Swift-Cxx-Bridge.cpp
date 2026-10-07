@@ -134,6 +134,14 @@ namespace margelo::nitro::munimlocation::bridge::swift {
     };
   }
   
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = MunimLocation::Func_void_std__string::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::string& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
   // pragma MARK: std::function<void(const LocationCapabilities& /* result */)>
   Func_void_LocationCapabilities create_Func_void_LocationCapabilities(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = MunimLocation::Func_void_LocationCapabilities::fromUnsafe(swiftClosureWrapper);

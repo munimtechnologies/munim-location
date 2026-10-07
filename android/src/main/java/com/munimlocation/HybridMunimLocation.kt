@@ -367,6 +367,15 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
   override fun setMockLocation(location: MockLocation): Promise<Unit> =
     promise { resolve, reject -> LocationEngine.setMock(location, { resolve(Unit) }, reject) }
 
+  // ---------- Location push (iOS only) ----------
+
+  // Android has no APNs location push; wake the app with a high-priority FCM
+  // data message instead and answer with getCurrentPosition() from JS.
+  override fun startMonitoringLocationPushes(): Promise<String> =
+    Promise.rejected(unsupported("Location push monitoring (an iOS APNs feature)"))
+
+  override fun stopMonitoringLocationPushes() {}
+
   // ---------- Utilities ----------
 
   override fun isLocationAvailable(): Promise<Boolean> =
@@ -406,7 +415,8 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
         mockLocationAvailable = true,
         backgroundLocationModeEnabled =
           LocationPermissions.declaredInManifest(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ||
-            LocationPermissions.declaredInManifest(context, "android.permission.FOREGROUND_SERVICE_LOCATION")
+            LocationPermissions.declaredInManifest(context, "android.permission.FOREGROUND_SERVICE_LOCATION"),
+        locationPushAvailable = false
       )
     )
   }

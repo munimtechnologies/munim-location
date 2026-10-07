@@ -397,6 +397,8 @@ export interface LocationCapabilities {
   geocoderAvailable: boolean
   mockLocationAvailable: boolean
   backgroundLocationModeEnabled: boolean
+  /** iOS 15+: CLLocationManager.startMonitoringLocationPushes is available. */
+  locationPushAvailable: boolean
 }
 
 export interface MunimLocation
@@ -506,6 +508,14 @@ export interface MunimLocation
   // ---------- Mock locations (Android) ----------
   setMockLocationEnabled(enabled: boolean): Promise<boolean>
   setMockLocation(location: MockLocation): Promise<void>
+
+  // ---------- Location push (iOS 15+) ----------
+  /**
+   * iOS 15+: starts monitoring APNs `location` pushes and resolves with the
+   * hex APNs token. Rejects with E_UNSUPPORTED on Android and older iOS.
+   */
+  startMonitoringLocationPushes(): Promise<string>
+  stopMonitoringLocationPushes(): void
 
   // ---------- Utilities ----------
   isLocationAvailable(): Promise<boolean>

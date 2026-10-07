@@ -69,6 +69,8 @@ namespace margelo::nitro::munimlocation {
       prototype.registerHybridMethod("reverseGeocode", &HybridMunimLocationSpec::reverseGeocode);
       prototype.registerHybridMethod("setMockLocationEnabled", &HybridMunimLocationSpec::setMockLocationEnabled);
       prototype.registerHybridMethod("setMockLocation", &HybridMunimLocationSpec::setMockLocation);
+      prototype.registerHybridMethod("startMonitoringLocationPushes", &HybridMunimLocationSpec::startMonitoringLocationPushes);
+      prototype.registerHybridMethod("stopMonitoringLocationPushes", &HybridMunimLocationSpec::stopMonitoringLocationPushes);
       prototype.registerHybridMethod("isLocationAvailable", &HybridMunimLocationSpec::isLocationAvailable);
       prototype.registerHybridMethod("getCapabilities", &HybridMunimLocationSpec::getCapabilities);
     });

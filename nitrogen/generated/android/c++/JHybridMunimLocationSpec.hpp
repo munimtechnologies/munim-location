@@ -109,6 +109,8 @@ namespace margelo::nitro::munimlocation {
     std::shared_ptr<Promise<std::vector<Address>>> reverseGeocode(double latitude, double longitude, const GeocodeOptions& options) override;
     std::shared_ptr<Promise<bool>> setMockLocationEnabled(bool enabled) override;
     std::shared_ptr<Promise<void>> setMockLocation(const MockLocation& location) override;
+    std::shared_ptr<Promise<std::string>> startMonitoringLocationPushes() override;
+    void stopMonitoringLocationPushes() override;
     std::shared_ptr<Promise<bool>> isLocationAvailable() override;
     std::shared_ptr<Promise<LocationCapabilities>> getCapabilities() override;
 
