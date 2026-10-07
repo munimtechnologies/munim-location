@@ -1,1 +1,36 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Headless JS keeps a partial wake lock while a background event is delivered. -->
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+  <!--
+    Location permissions (fine / coarse / background), FOREGROUND_SERVICE,
+    FOREGROUND_SERVICE_LOCATION, POST_NOTIFICATIONS, and RECEIVE_BOOT_COMPLETED
+    are declared by the app (or the Expo config plugin), never merged from here.
+  -->
+  <application>
+    <service
+      android:name=".MunimLocationService"
+      android:enabled="true"
+      android:exported="false"
+      android:foregroundServiceType="location" />
+    <service
+      android:name=".MunimLocationHeadlessTaskService"
+      android:enabled="true"
+      android:exported="false" />
+    <receiver
+      android:name=".MunimLocationReceiver"
+      android:enabled="true"
+      android:exported="false" />
+    <!-- Only fires when the app holds RECEIVE_BOOT_COMPLETED. -->
+    <receiver
+      android:name=".MunimLocationBootReceiver"
+      android:enabled="true"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

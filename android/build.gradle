@@ -143,6 +143,10 @@ dependencies {
 
   // Add a dependency on NitroModules
   implementation project(":react-native-nitro-modules")
+
+  // Fused Location Provider, geofencing, settings client, fused orientation.
+  implementation "com.google.android.gms:play-services-location:21.3.0"
+  implementation "androidx.core:core-ktx:1.13.1"
 }
 
 if (isNewArchitectureEnabled()) {
