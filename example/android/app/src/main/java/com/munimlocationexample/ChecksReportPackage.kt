@@ -23,7 +23,13 @@ class ChecksReportModule(context: ReactApplicationContext) : ReactContextBaseJav
     try {
       val file = File(reactApplicationContext.filesDir, "munim-location-checks.json")
       file.writeText(json)
-      val chunks = json.chunked(3000)
+      // One logical line per chunk: logcat splits messages on newlines.
+      val compact = try {
+        org.json.JSONObject(json).toString()
+      } catch (_: Exception) {
+        json.replace("\n", " ")
+      }
+      val chunks = compact.chunked(3000)
       chunks.forEachIndexed { index, chunk ->
         Log.i(TAG, "part ${index + 1}/${chunks.size} $chunk")
       }

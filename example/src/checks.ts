@@ -445,14 +445,29 @@ export async function runChecks(
       throw new Error('iOS mock locations should be unsupported')
     }
     needsGrant()
+    // Stay next to the real fix: a far-away mock moves the device's
+    // geolocation time zone (Android's time zone detector follows it).
+    const real = await Location.getCurrentPosition({ accuracy: 'hundredMeters', maximumAgeMs: 60000 })
+    const target = Location.getDestination(real, 45, 150)
     const enabled = await Location.setMockLocationEnabled(true).catch(error => {
       throw new Skip(`not the mock location app: ${String(error)}`)
     })
-    await Location.setMockLocation({ latitude: 48.8584, longitude: 2.2945, accuracy: 3 })
-    await sleep(1500)
-    const location = await Location.getCurrentPosition({ timeoutMs: 10000 })
-    await Location.setMockLocationEnabled(false)
-    return { enabled, location }
+    try {
+      const seen: Location.Location[] = []
+      const id = Location.watchPosition(location => seen.push(location), undefined, {
+        intervalMs: 500,
+      })
+      for (let i = 0; i < 6; i++) {
+        await Location.setMockLocation({ ...target, accuracy: 3 })
+        await sleep(500)
+      }
+      Location.clearWatch(id)
+      const mocked = seen.find(location => location.isMock)
+      expect(!!mocked, `no mocked fix among ${seen.length} updates`)
+      return { enabled, mocked, offsetMeters: Location.getDistance(real, mocked!) }
+    } finally {
+      await Location.setMockLocationEnabled(false).catch(() => {})
+    }
   })
 
   // ---------- Utilities ----------

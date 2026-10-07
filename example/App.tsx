@@ -548,6 +548,14 @@ export default function App() {
             android: { mode: 'pendingIntent' },
           }),
         )
+      } else if (route === 'background-start-fgs') {
+        attempt('startBackgroundUpdates fgs (deep link)', () =>
+          Location.startBackgroundUpdates({
+            intervalMs: 2000,
+            fastestIntervalMs: 1000,
+            android: { mode: 'foregroundService', notificationTitle: 'munim-location probe' },
+          }),
+        )
       } else if (route === 'background-stop') {
         attempt('stopBackgroundUpdates (deep link)', Location.stopBackgroundUpdates)
       }
