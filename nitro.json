@@ -1,0 +1,30 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "munimlocation"
+  ],
+  "ios": {
+    "iosModuleName": "MunimLocation"
+  },
+  "android": {
+    "androidNamespace": [
+      "munimlocation"
+    ],
+    "androidCxxLibName": "MunimLocation"
+  },
+  "autolinking": {
+    "MunimLocation": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridMunimLocation"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridMunimLocation"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules"
+  ]
+}
