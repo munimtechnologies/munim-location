@@ -63,11 +63,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     self.window = window
     appDelegate.window = window
 
+    // With the scene lifecycle a launch URL arrives in the connection
+    // options, not in launchOptions; pass it on so Linking.getInitialURL()
+    // sees `munimlocationexample://checks`.
+    var launchOptions = appDelegate.launchOptions ?? [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[.url] = url
+    }
+
     factory.startReactNative(
       withModuleName: "MunimLocationExample",
       in: window,
-      launchOptions: appDelegate.launchOptions
+      launchOptions: launchOptions
     )
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let url = URLContexts.first?.url else { return }
+    RCTLinkingManager.application(UIApplication.shared, open: url, options: [:])
   }
 }
 
