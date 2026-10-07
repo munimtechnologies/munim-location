@@ -995,10 +995,7 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             }
             self.authManager.startMonitoringLocationPushes { token, error in
                 if let error {
-                    completion(.failure(MunimLocationError.make(
-                        "E_LOCATION_PUSH",
-                        "\(error.localizedDescription) (\((error as NSError).domain) \((error as NSError).code))"
-                    )))
+                    completion(.failure(MunimLocationCore.locationPushError(error)))
                     return
                 }
                 guard let token, !token.isEmpty else {
@@ -1010,6 +1007,40 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
                 }
                 completion(.success(token.map { String(format: "%02x", $0) }.joined()))
             }
+        }
+    }
+
+    /// CLLocationPushServiceError codes, spelled out: iOS's own messages
+    /// only say "The operation couldn't be completed".
+    @available(iOS 15.0, *)
+    static func locationPushError(_ error: Error) -> NSError {
+        let nsError = error as NSError
+        guard nsError.domain == CLLocationPushServiceErrorDomain else {
+            return MunimLocationError.make("E_LOCATION_PUSH", nsError.localizedDescription)
+        }
+        switch CLLocationPushServiceError.Code(rawValue: nsError.code) {
+        case .missingPushExtension:
+            return MunimLocationError.make(
+                "E_LOCATION_PUSH",
+                "The app has no Location Push Service Extension (see docs/location-push.md)"
+            )
+        case .missingPushServerEnvironment:
+            return MunimLocationError.make(
+                "E_LOCATION_PUSH",
+                "The app has no APNs environment: add the aps-environment entitlement (Push Notifications capability)"
+            )
+        case .missingEntitlement:
+            return MunimLocationError.make(
+                "E_LOCATION_PUSH",
+                "The app lacks the com.apple.developer.location.push entitlement"
+            )
+        case .unsupportedPlatform:
+            return MunimLocationError.unsupported("Location push monitoring on this platform")
+        default:
+            return MunimLocationError.make(
+                "E_LOCATION_PUSH",
+                "\(nsError.localizedDescription) (CLLocationPushServiceError \(nsError.code))"
+            )
         }
     }
 

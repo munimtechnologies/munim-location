@@ -116,6 +116,12 @@ function withMunimLocation(config, options = {}) {
     // Push Service Extension target needs it too (see docs/location-push.md).
     config = withEntitlementsPlist(config, (pluginConfig) => {
       pluginConfig.modResults['com.apple.developer.location.push'] = true;
+      // iOS issues location push tokens only to apps with an APNs
+      // environment. Keep one set by expo-notifications or the app config;
+      // Xcode switches it to production when exporting for distribution.
+      if (!pluginConfig.modResults['aps-environment']) {
+        pluginConfig.modResults['aps-environment'] = 'development';
+      }
       return pluginConfig;
     });
   }
