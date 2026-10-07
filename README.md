@@ -100,6 +100,7 @@ Add the config plugin to `app.json`:
 | `temporaryFullAccuracyPurposes` | not set | `NSLocationTemporaryUsageDescriptionDictionary` (keys are purpose keys). |
 | `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter). `false` skips it. |
 | `isIosBackgroundLocationEnabled` | `false` | Adds `location` to `UIBackgroundModes`. |
+| `iosLocationPushEntitlement` | `false` | Adds the `com.apple.developer.location.push` entitlement for `startMonitoringLocationPushes()`. The Location Push Service Extension is a separate target; see [docs/location-push.md](docs/location-push.md). |
 | `androidPermissions` | `['fine', 'coarse']` | Any of `fine`, `coarse`, `background`; `false` manages them yourself. |
 | `isAndroidBackgroundLocationEnabled` | `false` | Adds `ACCESS_BACKGROUND_LOCATION`. |
 | `isAndroidForegroundServiceEnabled` | same as background | Adds `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`. |
@@ -161,6 +162,8 @@ The library does not merge location permissions into your app. Declare only what
 
 The library manifest declares its own components: the `location`-type foreground service, the Headless JS service, the PendingIntent receiver, and the boot receiver (which only fires when your app holds `RECEIVE_BOOT_COMPLETED`). It also adds `WAKE_LOCK` for Headless JS.
 
+**Release builds (R8 / ProGuard).** The library ships consumer rules (`android/consumer-rules.pro`) that keep its Nitro classes, the foreground service, the Headless JS task service, and the receivers, so `minifyEnabled true` release builds need no extra rules.
+
 Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_LOCATION` and a granted location permission; `startBackgroundUpdates()` checks the manifest first and rejects with `E_FOREGROUND_SERVICE`. Google Play asks apps that declare `ACCESS_BACKGROUND_LOCATION` or a `location` foreground service to justify it in the Play Console.
 
 **Build defaults.** The Android library compiles against `compileSdk` 37 with `minSdk` 24, matching React Native 0.87 (AGP 9.2, Kotlin 2.2), and depends on `com.google.android.gms:play-services-location`. An app's `rootProject.ext` values (`compileSdkVersion`, `minSdkVersion`, `targetSdkVersion`, `ndkVersion`) override them. Without Google Play services the package falls back to `LocationManager` for positions; geofencing, the settings dialog, and the fused orientation provider need Google Play services.
@@ -173,6 +176,7 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 - [Platform Support Matrix](#platform-support-matrix)
 - [Background and Terminated Behavior](#background-and-terminated-behavior)
 - [⚡ Quick Start](#-quick-start)
+- [Migrating from expo-location](#migrating-from-expo-location)
 - [🔧 API Reference](#-api-reference)
 - [🔍 Troubleshooting](#-troubleshooting)
 - [👏 Contributing](#-contributing)
@@ -185,6 +189,8 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 - [Getting Started](#-installation)
 - [API Reference](#-api-reference)
 - [Background and Terminated Behavior](#background-and-terminated-behavior)
+- [Migrating from expo-location](#migrating-from-expo-location)
+- [Location push (iOS)](docs/location-push.md)
 - [Troubleshooting](#-troubleshooting)
 
 ## 🚀 Features
@@ -202,6 +208,7 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 
 - 📍 **Current Position**: accuracy, timeout, maximum age, Android priorities (high accuracy, balanced, low power, passive) and `CurrentLocationRequest` options
 - 🕘 **Last Known Position**: cached fix with age and accuracy filters, never turns on GPS
+- 🎚️ **expo-location Presets**: `Accuracy.Low` / `Balanced` / `High` (and `Lowest`, `Highest`, `BestForNavigation`), plus `subscribeToPosition()` / `subscribeToHeading()` handles with `remove()`
 - 🔁 **Continuous Updates**: distance filter, interval, fastest interval, batching (`maxUpdateDelayMs`), max update age, update count, granularity, iOS activity type and auto-pause
 - ✨ **iOS 17+ Live Updates**: `CLLocationUpdate.liveUpdates` with stationary and accuracy diagnostics
 - 📦 **Full Location Object**: altitude (ellipsoidal on iOS 15+, MSL on Android 14+), vertical / speed / course accuracy, floor, provider, elapsed realtime, satellite count, mock and simulated flags
@@ -212,6 +219,7 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 - 🚶 **Significant Changes and Visits**: iOS significant-change monitoring and `CLVisit`; Android low-power PendingIntent equivalent
 - 💤 **Headless Delivery**: `registerBackgroundHandler()` receives events when iOS relaunches the app or Android starts it without UI (Headless JS), with a persisted replay queue
 - 🔄 **Resume After Reboot**: Android restores background tracking, significant changes, and geofences on `BOOT_COMPLETED`
+- 📬 **Location Push (iOS 15+)**: `startMonitoringLocationPushes()` returns the APNs token that wakes a Location Push Service Extension; sample extension and payload contract in [docs/location-push.md](docs/location-push.md)
 
 ### Regions
 
@@ -256,6 +264,7 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 | Deferred / batched delivery | ➖ | ✅ | Android `maxUpdateDelayMs`. Apple removed deferred updates in iOS 13; iOS delivers each fix. |
 | Headless / terminated delivery | ✅ | ✅ | iOS relaunches for significant changes, visits, and regions (not for standard updates). Android Headless JS from receivers and the foreground service. |
 | Resume after reboot | ➖ | ✅ | Android `BOOT_COMPLETED` (needs `RECEIVE_BOOT_COMPLETED`). iOS resumes significant changes, visits, and regions itself; background updates resume when the app next launches. |
+| Location push | ✅ | ❌ | iOS 15+ APNs `location` pushes wake your Location Push Service Extension (needs the `com.apple.developer.location.push` entitlement and Always access). Android has no equivalent; use an FCM data message and `getCurrentPosition()`. |
 | Geofencing | ✅ | ✅ | iOS: 20 regions per app (shared with beacon regions), `CLMonitor` on iOS 17+, region monitoring before. Android: 100 per app, fine + background permission on Android 10+. |
 | Geofence dwell | ✅ | ✅ | Android native `loiteringDelay`; iOS timer after entry (only while the process runs). |
 | iBeacon ranging / monitoring | ✅ | ❌ | Android has no iBeacon API; scan BLE advertisements instead (for example with munim-bluetooth). |
@@ -363,6 +372,20 @@ const watchId = watchPosition(
 clearWatch(watchId)
 ```
 
+Prefer a handle? `subscribeToPosition()` takes the same options and returns `{ watchId, remove() }`:
+
+```typescript
+import { Accuracy, subscribeToPosition } from 'munim-location'
+
+const subscription = subscribeToPosition(
+  (location) => console.log('moved', location),
+  { accuracy: Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
+)
+
+// Later:
+subscription.remove()
+```
+
 ### Geofences
 
 ```typescript
@@ -398,9 +421,141 @@ const [address] = await reverseGeocode({ latitude: 48.8584, longitude: 2.2945 })
 console.log(address?.formattedAddress)
 ```
 
+## Migrating from expo-location
+
+munim-location covers everything an app usually takes from `expo-location` (and `expo-task-manager` for location tasks), plus iOS location pushes. The main differences:
+
+- **Flat locations.** A `Location` is flat: `location.latitude`, not `location.coords.latitude`.
+- **Booleans for permission.** `PermissionStatus` has `foreground` and `background` booleans instead of `status === 'granted'`, and the same `canAskAgain`.
+- **No task names.** Background events go to one handler registered with `registerBackgroundHandler()` at the top level of your entry file, instead of `TaskManager.defineTask()` per task. On Android it runs as Headless JS when the app was started only to deliver the event.
+- **Synchronous subscriptions.** `subscribeToPosition()` and `subscribeToHeading()` return the subscription directly (no Promise).
+- **Native timeouts.** `getCurrentPosition({ timeoutMs })` cancels the native request when it times out, so headless code does not need a `Promise.race` wrapper.
+
+### API map
+
+| expo-location | munim-location | Notes |
+| --- | --- | --- |
+| `getForegroundPermissionsAsync()` | `getPermissionStatus()` | `status === 'granted'` → `foreground`; `canAskAgain` is the same. |
+| `requestForegroundPermissionsAsync()` | `requestForegroundPermission()` | Resolves with the new `PermissionStatus`. |
+| `getBackgroundPermissionsAsync()` | `getPermissionStatus()` | `status === 'granted'` → `background`. `canAskAgain` is `true` while foreground access can still be upgraded (iOS when-in-use, Android 10+). |
+| `requestBackgroundPermissionsAsync()` | `requestBackgroundPermission()` | iOS one-time upgrade prompt; Android 11+ opens the app's location settings page. |
+| `PermissionStatus.GRANTED` | `permission.foreground` / `permission.background` | `permission.status` is `notDetermined`, `restricted`, `denied`, `whenInUse`, or `always`. |
+| `hasServicesEnabledAsync()` | `isLocationServicesEnabled()` | |
+| `enableNetworkProviderAsync()` | `requestLocationSettingsResolution({ priority: 'balanced' })` | Android shows the same Google Play services dialog and resolves whether the settings are satisfied (it does not reject when the user declines). iOS resolves whether location is usable. |
+| `Accuracy.Lowest` / `Low` / `Balanced` / `High` / `Highest` / `BestForNavigation` | `Accuracy.Lowest` / `Low` / `Balanced` / `High` / `Highest` / `BestForNavigation` | Same meaning: `threeKilometers`, `kilometer`, `hundredMeters`, `nearestTenMeters`, `best`, `bestForNavigation`, and the same Android priorities. |
+| `getLastKnownPositionAsync({ maxAge, requiredAccuracy })` | `getLastKnownPosition({ maximumAgeMs, requiredAccuracy })` | Resolves `undefined` (not `null`) when nothing qualifies. |
+| `getCurrentPositionAsync({ accuracy, timeInterval })` | `getCurrentPosition({ accuracy, timeoutMs, maximumAgeMs })` | `timeInterval` has no equivalent (it only set an Android request interval); use `timeoutMs` (default 30 s) for a deadline, also in headless code. |
+| `watchPositionAsync({ accuracy, timeInterval, distanceInterval }, callback)` | `subscribeToPosition(callback, { accuracy, intervalMs, distanceFilter })` | Returns `{ watchId, remove() }`. An error callback is the third argument. `watchPosition()` / `clearWatch()` is the id-based form. |
+| `LocationSubscription.remove()` | `LocationSubscription.remove()` | Calling it twice is safe. |
+| `watchHeadingAsync(callback)` | `subscribeToHeading(callback, options?)` | `magHeading` → `magneticHeading`, `trueHeading` (also `-1` until a fix is known), `accuracy` → `headingAccuracy`. `heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading` works as before. |
+| `startLocationUpdatesAsync(task, options)` | `startBackgroundUpdates(options)` | Locations arrive in the background handler as `{ name: 'backgroundLocation', payload: { locations } }`. Android options (foreground service notification) go in `options.android`. |
+| `hasStartedLocationUpdatesAsync(task)` | `getBackgroundStatus().running` | Synchronous. |
+| `stopLocationUpdatesAsync(task)` | `stopBackgroundUpdates()` | |
+| `startGeofencingAsync(task, regions)` | `removeAllGeofences()` then `addGeofences(regions)` | `addGeofence()` replaces a region with the same identifier, so re-adding one moves it. Region fields: `notifyOnEnter` → `notifyOnEntry`, `notifyOnExit`, `identifier`, `latitude`, `longitude`, `radius`. |
+| `stopGeofencingAsync(task)` | `removeAllGeofences()` | |
+| `TaskManager.defineTask(task, ({ data: { eventType, region } }) => ...)` | `registerBackgroundHandler((event) => ...)` | `event.name === 'geofenceTransition'`; `GeofencingEventType.Enter` / `Exit` → `event.payload.transition === 'enter'` / `'exit'`; `region.identifier` → `event.payload.identifier`. Call it at the top level of `index.ts`. |
+| `reverseGeocodeAsync({ latitude, longitude })` | `reverseGeocode({ latitude, longitude })` | Field names below. |
+| `geocodeAsync(address)` | `geocode(address)` | Results carry `latitude` / `longitude`. |
+| A custom module around `CLLocationManager.startMonitoringLocationPushes` | `startMonitoringLocationPushes()`, `stopMonitoringLocationPushes()` | iOS 15+; resolves with the hex APNs token. See [docs/location-push.md](docs/location-push.md). |
+
+### `LocationObject` → `Location`
+
+| expo-location | munim-location |
+| --- | --- |
+| `coords.latitude`, `coords.longitude` | `latitude`, `longitude` |
+| `coords.accuracy` | `horizontalAccuracy` |
+| `coords.altitude` | `altitude` |
+| `coords.altitudeAccuracy` | `verticalAccuracy` |
+| `coords.heading` (direction of travel) | `course` |
+| `coords.speed` | `speed` |
+| `timestamp` | `timestamp` (epoch ms) |
+| `mocked` | `isMock` |
+
+### `LocationGeocodedAddress` → `Address`
+
+| expo-location | munim-location |
+| --- | --- |
+| `name` | `name` |
+| `streetNumber` | `streetNumber` |
+| `street` | `street` |
+| `district` | `subLocality` |
+| `city` | `locality` |
+| `subregion` | `subAdministrativeArea` |
+| `region` | `administrativeArea` |
+| `postalCode` | `postalCode` |
+| `country` | `country` |
+| `isoCountryCode` | `isoCountryCode` |
+| `timezone` | `timeZone` |
+| `formattedAddress` | `formattedAddress` |
+
+### Example
+
+```typescript
+// Before (expo-location)
+const permission = await Location.getForegroundPermissionsAsync()
+if (permission.status !== 'granted' && permission.canAskAgain) {
+  await Location.requestForegroundPermissionsAsync()
+}
+const last = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 })
+const watcher = await Location.watchPositionAsync(
+  { accuracy: Location.Accuracy.Balanced, timeInterval: 1000, distanceInterval: 3 },
+  (location) => send(location.coords.latitude, location.coords.longitude)
+)
+watcher.remove()
+
+// After (munim-location)
+import {
+  Accuracy,
+  getLastKnownPosition,
+  getPermissionStatus,
+  requestForegroundPermission,
+  subscribeToPosition,
+} from 'munim-location'
+
+const permission = await getPermissionStatus()
+if (!permission.foreground && permission.canAskAgain) {
+  await requestForegroundPermission()
+}
+const last = await getLastKnownPosition({ maximumAgeMs: 5 * 60 * 1000 })
+const subscription = subscribeToPosition(
+  (location) => send(location.latitude, location.longitude),
+  { accuracy: Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
+)
+subscription.remove()
+```
+
+Geofencing with a headless handler:
+
+```typescript
+// index.ts (top level, before the app registers)
+import {
+  Accuracy,
+  addGeofences,
+  getCurrentPosition,
+  getLastKnownPosition,
+  registerBackgroundHandler,
+  removeAllGeofences,
+} from 'munim-location'
+
+registerBackgroundHandler(async (event) => {
+  if (event.name !== 'geofenceTransition') return
+  const { identifier, transition } = event.payload // 'enter' | 'exit' | 'dwell'
+  const location =
+    (await getLastKnownPosition({ maximumAgeMs: 2 * 60 * 1000 })) ??
+    (await getCurrentPosition({ accuracy: Accuracy.Balanced, timeoutMs: 15000 }).catch(() => undefined))
+  if (location) await upload(identifier, transition, location)
+})
+
+// In the app, after Always access is granted:
+await removeAllGeofences()
+await addGeofences([
+  { identifier: 'map-active-geofence', latitude, longitude, radius: 200, notifyOnEntry: true, notifyOnExit: true },
+])
+```
+
 ## 🔧 API Reference
 
-Every Promise rejects with a `LocationError` whose `code` is stable (`E_LOCATION_PERMISSION_DENIED`, `E_LOCATION_SERVICES_DISABLED`, `E_LOCATION_TIMEOUT`, `E_LOCATION_UNAVAILABLE`, `E_BACKGROUND_MODE_MISSING`, `E_FOREGROUND_SERVICE`, `E_GEOFENCE`, `E_GEOFENCE_LIMIT`, `E_GEOCODE`, `E_MOCK_LOCATION`, `E_NO_ACTIVITY`, `E_UNSUPPORTED`, ...).
+Every Promise rejects with a `LocationError` whose `code` is stable (`E_LOCATION_PERMISSION_DENIED`, `E_LOCATION_SERVICES_DISABLED`, `E_LOCATION_TIMEOUT`, `E_LOCATION_UNAVAILABLE`, `E_BACKGROUND_MODE_MISSING`, `E_FOREGROUND_SERVICE`, `E_GEOFENCE`, `E_GEOFENCE_LIMIT`, `E_GEOCODE`, `E_MOCK_LOCATION`, `E_NO_ACTIVITY`, `E_LOCATION_PUSH`, `E_UNSUPPORTED`, ...).
 
 ### Permissions
 
@@ -483,6 +638,10 @@ One-shot position.
 
 **Returns:** `Promise<Location>`
 
+#### `Accuracy`
+
+Presets with expo-location's meaning, usable anywhere an `accuracy` option is: `Accuracy.Lowest` (`threeKilometers`), `Low` (`kilometer`), `Balanced` (`hundredMeters`), `High` (`nearestTenMeters`), `Highest` (`best`), `BestForNavigation` (`bestForNavigation`). With `priority: 'auto'` Android maps them to low power, balanced, and high accuracy like Expo.
+
 #### `getLastKnownPosition(options?)`
 
 The most recent cached fix, filtered by `maximumAgeMs` and `requiredAccuracy` (metres). Never turns on GPS.
@@ -494,6 +653,10 @@ The most recent cached fix, filtered by `maximumAgeMs` and `requiredAccuracy` (m
 Continuous updates; returns a watch id.
 
 **Options** (all optional): `accuracy`, `priority`, `granularity`, `distanceFilter` (metres), `intervalMs` (default `5000`), `fastestIntervalMs`, `maxUpdateDelayMs` (Android batching), `minUpdateAgeMs`, `maxUpdates`, `waitForAccurateLocation` (Android), `activityType` (`other` | `automotiveNavigation` | `fitness` | `otherNavigation` | `airborne` | `maritime`; iOS, `maritime` needs iOS 27), `pausesLocationUpdatesAutomatically` (iOS), `useLiveUpdates` (iOS 17+ `CLLocationUpdate.liveUpdates`), `allowsBackgroundLocationUpdates` and `showsBackgroundLocationIndicator` (iOS).
+
+#### `subscribeToPosition(onLocation, options?, onError?)`
+
+`watchPosition()` with a handle: returns `{ watchId, remove() }`. Same options. `remove()` stops the watch and is safe to call twice.
 
 #### `clearWatch(watchId)`, `clearAllWatches()`
 
@@ -606,6 +769,10 @@ Beacon-region transitions arrive as `geofenceTransition` with `kind: 'beacon'`.
 
 Compass updates as `heading` events (`{ magneticHeading, trueHeading, headingAccuracy, x?, y?, z?, timestamp, source }`). Options: `headingFilter` (degrees, default `1`), `orientation` (`portrait`, `portraitUpsideDown`, `landscapeLeft`, `landscapeRight`, `faceUp`, `faceDown`), `showsCalibrationDisplay` (iOS, default `true`), `useFusedOrientation` (Android 13+, default `true`), `samplingPeriodMs` (Android, default `100`). `trueHeading` is `-1` until a location fix is known.
 
+#### `subscribeToHeading(onHeading, options?)`
+
+Compass updates with a handle: returns `{ remove() }`. Same options as `startHeadingUpdates()`. Updates run while at least one subscription is active; the last `remove()` stops them.
+
 #### `getCurrentHeading(timeoutMs?)`
 
 **Returns:** `Promise<Heading>`
@@ -642,6 +809,18 @@ Needs fine location and keeps a GPS request open while running (GNSS callbacks o
 
 Android `Geocoder.isPresent()`; always `true` on iOS.
 
+### Location Push (iOS)
+
+#### `startMonitoringLocationPushes()`
+
+iOS 15+: starts monitoring APNs `location` pushes and resolves with the hex APNs token your server sends them to (`apns-push-type: location`, topic `<bundle id>.location-query`). A push wakes the app's Location Push Service Extension, which takes a fix and reports it; iOS delivers pushes only while the person has granted Always access. Needs the `com.apple.developer.location.push` entitlement (Expo: `iosLocationPushEntitlement: true`). Rejects with `E_LOCATION_PUSH` when iOS refuses (usually a missing entitlement) and with `E_UNSUPPORTED` on Android. Setup, a sample extension, and the payload contract: [docs/location-push.md](docs/location-push.md).
+
+**Returns:** `Promise<string>`
+
+#### `stopMonitoringLocationPushes()`
+
+Stops monitoring (call it on sign-out). A no-op on Android.
+
 ### Mock Locations (Android)
 
 #### `setMockLocationEnabled(enabled)`, `setMockLocation(location)`
@@ -656,7 +835,7 @@ Services on, permission granted, and (Android) a provider able to report.
 
 #### `getCapabilities()`
 
-**Returns:** `Promise<LocationCapabilities>` — `platform`, `osVersion`, `locationServicesEnabled`, `headingAvailable`, `significantChangeAvailable`, `visitsAvailable`, `regionMonitoringAvailable`, `maxMonitoredRegions`, `geofencingEngine` (`clmonitor`, `regionMonitoring`, `geofencingClient`, `none`), `beaconRangingAvailable`, `beaconMonitoringAvailable`, `liveUpdatesAvailable`, `serviceSessionAvailable`, `backgroundActivitySessionAvailable`, `temporaryFullAccuracyAvailable`, `altimeterAvailable`, `absoluteAltitudeAvailable`, `gnssStatusAvailable`, `nmeaAvailable`, `gnssMeasurementsAvailable`, `gnssNavigationMessagesAvailable`, `fusedLocationAvailable`, `fusedOrientationAvailable`, `geocoderAvailable`, `mockLocationAvailable`, `backgroundLocationModeEnabled`.
+**Returns:** `Promise<LocationCapabilities>` — `platform`, `osVersion`, `locationServicesEnabled`, `headingAvailable`, `significantChangeAvailable`, `visitsAvailable`, `regionMonitoringAvailable`, `maxMonitoredRegions`, `geofencingEngine` (`clmonitor`, `regionMonitoring`, `geofencingClient`, `none`), `beaconRangingAvailable`, `beaconMonitoringAvailable`, `liveUpdatesAvailable`, `serviceSessionAvailable`, `backgroundActivitySessionAvailable`, `temporaryFullAccuracyAvailable`, `altimeterAvailable`, `absoluteAltitudeAvailable`, `gnssStatusAvailable`, `nmeaAvailable`, `gnssMeasurementsAvailable`, `gnssNavigationMessagesAvailable`, `fusedLocationAvailable`, `fusedOrientationAvailable`, `geocoderAvailable`, `mockLocationAvailable`, `backgroundLocationModeEnabled`, `locationPushAvailable`.
 
 #### `getDistance(from, to)`, `getBearing(from, to)`, `getDestination(from, bearing, distance)`, `isPointWithinRadius(point, center, radius)`
 
@@ -701,6 +880,7 @@ Use `addEventListener(eventName, callback)`; it returns an unsubscribe function.
 5. **Geofences never fire on Android 10+**: geofencing needs both fine and background location.
 6. **Android geocoding returns nothing**: `isGeocoderAvailable()` is `false` on devices without a geocoder backend (no Google Play services).
 7. **No altitude events on iOS**: add `NSMotionUsageDescription` and allow Motion & Fitness.
+8. **`E_LOCATION_PUSH`**: iOS refused location push monitoring. The app's provisioning profile must include `com.apple.developer.location.push` (Apple grants it on request; Expo: `iosLocationPushEntitlement: true`).
 
 ### Xcode 27
 
