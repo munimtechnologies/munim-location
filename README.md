@@ -53,12 +53,124 @@
 
 **Note**: Location is heavily platform-gated. This library exposes what iOS and Android make available to third-party apps and reports the rest through `getCapabilities()`, explicit `E_UNSUPPORTED` errors, and the [Platform Support Matrix](#platform-support-matrix), instead of silently pretending it works.
 
+## 📦 Installation
+
+### Expo
+
+```bash
+npx expo install munim-location react-native-nitro-modules
+```
+
+> **Note**: This library requires Expo SDK 50+ and works with both managed and bare workflows. To support Nitro modules, you need React Native version v0.78.0 or higher.
+>
+> **Important**: This package requires a native development build in Expo. It does not work in Expo Go. After installing, run `npx expo run:ios`, `npx expo run:android`, or create a development build with EAS.
+
+Add the config plugin to `app.json`:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "munim-location",
+        {
+          "locationWhenInUsePermission": "Show your position on the map.",
+          "locationAlwaysAndWhenInUsePermission": "Track your runs while the app is closed.",
+          "temporaryFullAccuracyPurposes": {
+            "Navigation": "Turn-by-turn directions need your precise location."
+          },
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "androidBootReceiver": true,
+          "androidNotificationTitle": "Tracking your run",
+          "androidNotificationIcon": "ic_notification"
+        }
+      ]
+    ]
+  }
+}
+```
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `locationWhenInUsePermission` | generic text | `NSLocationWhenInUseUsageDescription`. `false` leaves it alone. |
+| `locationAlwaysAndWhenInUsePermission` | generic text | `NSLocationAlwaysAndWhenInUseUsageDescription`. `false` leaves it alone. |
+| `locationAlwaysPermission` | not set | Legacy `NSLocationAlwaysUsageDescription`. |
+| `temporaryFullAccuracyPurposes` | not set | `NSLocationTemporaryUsageDescriptionDictionary` (keys are purpose keys). |
+| `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter). `false` skips it. |
+| `isIosBackgroundLocationEnabled` | `false` | Adds `location` to `UIBackgroundModes`. |
+| `androidPermissions` | `['fine', 'coarse']` | Any of `fine`, `coarse`, `background`; `false` manages them yourself. |
+| `isAndroidBackgroundLocationEnabled` | `false` | Adds `ACCESS_BACKGROUND_LOCATION`. |
+| `isAndroidForegroundServiceEnabled` | same as background | Adds `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`. |
+| `androidBootReceiver` | `false` | Adds `RECEIVE_BOOT_COMPLETED` so tracking and geofences resume after reboot. |
+| `androidNotificationTitle`, `androidNotificationText`, `androidNotificationChannelId`, `androidNotificationChannelName`, `androidNotificationIcon`, `androidNotificationColor` | built-in | Foreground-service notification defaults (manifest meta-data). Per-call `startBackgroundUpdates({ android })` values win. |
+
+### React Native CLI
+
+```bash
+npm install munim-location react-native-nitro-modules
+# or
+yarn add munim-location react-native-nitro-modules
+```
+
+### iOS Setup
+
+For iOS, the library is automatically linked. Add the usage strings you need to `Info.plist`:
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Show your position on the map.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Track your runs while the app is closed.</string>
+<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+<dict>
+  <key>Navigation</key>
+  <string>Turn-by-turn directions need your precise location.</string>
+</dict>
+<!-- Only for startAltitudeUpdates() -->
+<key>NSMotionUsageDescription</key>
+<string>Measure altitude changes with the barometer.</string>
+<!-- Only for background updates -->
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+</array>
+```
+
+`startBackgroundUpdates()` and `watchPosition({ allowsBackgroundLocationUpdates: true })` check for the `location` background mode first and reject with `E_BACKGROUND_MODE_MISSING` instead of letting Core Location crash. Significant changes, visits, and regions do not need the background mode.
+
+**For Expo projects**, use the config plugin above, or set the keys under `expo.ios.infoPlist`.
+
+### Android Setup
+
+The library does not merge location permissions into your app. Declare only what you use in `AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<!-- Background updates, geofencing on Android 10+ -->
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<!-- startBackgroundUpdates() in foregroundService mode -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<!-- Resume tracking and geofences after reboot -->
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+```
+
+The library manifest declares its own components: the `location`-type foreground service, the Headless JS service, the PendingIntent receiver, and the boot receiver (which only fires when your app holds `RECEIVE_BOOT_COMPLETED`). It also adds `WAKE_LOCK` for Headless JS.
+
+Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_LOCATION` and a granted location permission; `startBackgroundUpdates()` checks the manifest first and rejects with `E_FOREGROUND_SERVICE`. Google Play asks apps that declare `ACCESS_BACKGROUND_LOCATION` or a `location` foreground service to justify it in the Play Console.
+
+**Build defaults.** The Android library compiles against `compileSdk` 37 with `minSdk` 24, matching React Native 0.87 (AGP 9.2, Kotlin 2.2), and depends on `com.google.android.gms:play-services-location`. An app's `rootProject.ext` values (`compileSdkVersion`, `minSdkVersion`, `targetSdkVersion`, `ndkVersion`) override them. Without Google Play services the package falls back to `LocationManager` for positions; geofencing, the settings dialog, and the fused orientation provider need Google Play services.
+
 ## Table of contents
 
+- [📦 Installation](#-installation)
 - [📚 Documentation](#-documentation)
 - [🚀 Features](#-features)
 - [Platform Support Matrix](#platform-support-matrix)
-- [📦 Installation](#-installation)
 - [Background and Terminated Behavior](#background-and-terminated-behavior)
 - [⚡ Quick Start](#-quick-start)
 - [🔧 API Reference](#-api-reference)
@@ -153,118 +265,6 @@
 | Geocoding | ✅ | ✅ | iOS 26+ MapKit requests, `CLGeocoder` before (deprecated in iOS 26). Android `Geocoder` needs a backend (Google Play services devices). |
 
 Call `getCapabilities()` at runtime when you need optional behavior. Support still varies by OS version, hardware, permissions, and app state.
-
-## 📦 Installation
-
-### React Native CLI
-
-```bash
-npm install munim-location react-native-nitro-modules
-# or
-yarn add munim-location react-native-nitro-modules
-```
-
-### Expo
-
-```bash
-npx expo install munim-location react-native-nitro-modules
-```
-
-> **Note**: This library requires Expo SDK 50+ and works with both managed and bare workflows. To support Nitro modules, you need React Native version v0.78.0 or higher.
->
-> **Important**: This package requires a native development build in Expo. It does not work in Expo Go. After installing, run `npx expo run:ios`, `npx expo run:android`, or create a development build with EAS.
-
-Add the config plugin to `app.json`:
-
-```json
-{
-  "expo": {
-    "plugins": [
-      [
-        "munim-location",
-        {
-          "locationWhenInUsePermission": "Show your position on the map.",
-          "locationAlwaysAndWhenInUsePermission": "Track your runs while the app is closed.",
-          "temporaryFullAccuracyPurposes": {
-            "Navigation": "Turn-by-turn directions need your precise location."
-          },
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true,
-          "androidBootReceiver": true,
-          "androidNotificationTitle": "Tracking your run",
-          "androidNotificationIcon": "ic_notification"
-        }
-      ]
-    ]
-  }
-}
-```
-
-| Option | Default | Effect |
-| --- | --- | --- |
-| `locationWhenInUsePermission` | generic text | `NSLocationWhenInUseUsageDescription`. `false` leaves it alone. |
-| `locationAlwaysAndWhenInUsePermission` | generic text | `NSLocationAlwaysAndWhenInUseUsageDescription`. `false` leaves it alone. |
-| `locationAlwaysPermission` | not set | Legacy `NSLocationAlwaysUsageDescription`. |
-| `temporaryFullAccuracyPurposes` | not set | `NSLocationTemporaryUsageDescriptionDictionary` (keys are purpose keys). |
-| `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter). `false` skips it. |
-| `isIosBackgroundLocationEnabled` | `false` | Adds `location` to `UIBackgroundModes`. |
-| `androidPermissions` | `['fine', 'coarse']` | Any of `fine`, `coarse`, `background`; `false` manages them yourself. |
-| `isAndroidBackgroundLocationEnabled` | `false` | Adds `ACCESS_BACKGROUND_LOCATION`. |
-| `isAndroidForegroundServiceEnabled` | same as background | Adds `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`. |
-| `androidBootReceiver` | `false` | Adds `RECEIVE_BOOT_COMPLETED` so tracking and geofences resume after reboot. |
-| `androidNotificationTitle`, `androidNotificationText`, `androidNotificationChannelId`, `androidNotificationChannelName`, `androidNotificationIcon`, `androidNotificationColor` | built-in | Foreground-service notification defaults (manifest meta-data). Per-call `startBackgroundUpdates({ android })` values win. |
-
-### iOS Setup
-
-For iOS, the library is automatically linked. Add the usage strings you need to `Info.plist`:
-
-```xml
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Show your position on the map.</string>
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-<string>Track your runs while the app is closed.</string>
-<key>NSLocationTemporaryUsageDescriptionDictionary</key>
-<dict>
-  <key>Navigation</key>
-  <string>Turn-by-turn directions need your precise location.</string>
-</dict>
-<!-- Only for startAltitudeUpdates() -->
-<key>NSMotionUsageDescription</key>
-<string>Measure altitude changes with the barometer.</string>
-<!-- Only for background updates -->
-<key>UIBackgroundModes</key>
-<array>
-  <string>location</string>
-</array>
-```
-
-`startBackgroundUpdates()` and `watchPosition({ allowsBackgroundLocationUpdates: true })` check for the `location` background mode first and reject with `E_BACKGROUND_MODE_MISSING` instead of letting Core Location crash. Significant changes, visits, and regions do not need the background mode.
-
-**For Expo projects**, use the config plugin above, or set the keys under `expo.ios.infoPlist`.
-
-### Android Setup
-
-The library does not merge location permissions into your app. Declare only what you use in `AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<!-- Background updates, geofencing on Android 10+ -->
-<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-<!-- startBackgroundUpdates() in foregroundService mode -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-<!-- Resume tracking and geofences after reboot -->
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-```
-
-The library manifest declares its own components: the `location`-type foreground service, the Headless JS service, the PendingIntent receiver, and the boot receiver (which only fires when your app holds `RECEIVE_BOOT_COMPLETED`). It also adds `WAKE_LOCK` for Headless JS.
-
-Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_LOCATION` and a granted location permission; `startBackgroundUpdates()` checks the manifest first and rejects with `E_FOREGROUND_SERVICE`. Google Play asks apps that declare `ACCESS_BACKGROUND_LOCATION` or a `location` foreground service to justify it in the Play Console.
-
-**Build defaults.** The Android library compiles against `compileSdk` 37 with `minSdk` 24, matching React Native 0.87 (AGP 9.2, Kotlin 2.2), and depends on `com.google.android.gms:play-services-location`. An app's `rootProject.ext` values (`compileSdkVersion`, `minSdkVersion`, `targetSdkVersion`, `ndkVersion`) override them. Without Google Play services the package falls back to `LocationManager` for positions; geofencing, the settings dialog, and the fused orientation provider need Google Play services.
 
 ## Background and Terminated Behavior
 
