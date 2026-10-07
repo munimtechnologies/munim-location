@@ -1,6 +1,6 @@
 {
   "name": "munim-location",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A comprehensive React Native location library: permissions, current and continuous positions, background and headless tracking, geofencing, iBeacons, heading, altimeter, GNSS, and geocoding for iOS and Android with Expo support",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
