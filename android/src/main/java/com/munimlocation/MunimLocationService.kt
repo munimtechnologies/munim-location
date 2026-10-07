@@ -130,7 +130,12 @@ class MunimLocationService : Service() {
       @Suppress("DEPRECATION")
       packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
     }
-    info.metaData?.get(key)?.toString()
+    val bundle = info.metaData
+    when {
+      bundle == null || !bundle.containsKey(key) -> null
+      // aapt stores "#RRGGBB" meta-data values as colour integers.
+      else -> bundle.getString(key) ?: bundle.getInt(key, 0).let { String.format("#%08X", it) }
+    }
   } catch (_: Throwable) {
     null
   }

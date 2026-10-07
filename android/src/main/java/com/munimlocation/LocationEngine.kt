@@ -18,7 +18,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
-import androidx.core.os.CancellationSignal
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -242,7 +241,7 @@ object LocationEngine {
       finish(null, LocationException("E_LOCATION_UNAVAILABLE", "No enabled location provider"))
       return
     }
-    val signal = CancellationSignal()
+    val signal = android.os.CancellationSignal()
     LocationManagerCompat.getCurrentLocation(manager, provider, signal, executor) { location ->
       finish(location?.let { LocationJson.location(it) }, null)
     }
@@ -475,10 +474,10 @@ object LocationEngine {
           reject(LocationException("E_NO_ACTIVITY", "The settings dialog needs a foreground activity"))
           return@addOnFailureListener
         }
-        val requestCode = settingsRequestCodes.incrementAndGet()
+        val settingsCode = settingsRequestCodes.incrementAndGet()
         val listener = object : BaseActivityEventListener() {
-          override fun onActivityResult(activity: Activity, code: Int, resultCode: Int, data: Intent?) {
-            if (code != requestCode) return
+          override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+            if (requestCode != settingsCode) return
             reactContext.removeActivityEventListener(this)
             val satisfied = resultCode == Activity.RESULT_OK
             LocationEvents.emit("locationSettingsResolved", mapOf("satisfied" to satisfied))
@@ -488,7 +487,7 @@ object LocationEngine {
         reactContext.addActivityEventListener(listener)
         mainHandler.post {
           try {
-            error.startResolutionForResult(activity, requestCode)
+            error.startResolutionForResult(activity, settingsCode)
           } catch (failure: Throwable) {
             reactContext.removeActivityEventListener(listener)
             reject(LocationException("E_LOCATION_SETTINGS", failure.message ?: "Unable to show the settings dialog"))
