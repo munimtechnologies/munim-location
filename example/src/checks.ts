@@ -126,6 +126,18 @@ export async function runChecks(
     if (!granted) throw new Skip(`needs location permission (status ${permission?.status})`)
   }
 
+  await check('permission status shape (expo-location parity)', async () => {
+    const status = await Location.getPermissionStatus()
+    expect(typeof status.canAskAgain === 'boolean', 'canAskAgain missing')
+    expect(typeof status.foreground === 'boolean', 'foreground missing')
+    expect(typeof status.background === 'boolean', 'background missing')
+    return {
+      status: status.status,
+      foreground: status.foreground,
+      background: status.background,
+      canAskAgain: status.canAskAgain,
+    }
+  })
   await check('isLocationServicesEnabled', () => Location.isLocationServicesEnabled())
   await check('getProviderStatus', () => Location.getProviderStatus())
   await check('checkLocationSettings', () => Location.checkLocationSettings())
@@ -230,6 +242,49 @@ export async function runChecks(
     unsubscribe()
     expect(locations.length > 0, 'no live updates')
     return { count: locations.length, diagnostics }
+  })
+
+  await check('getLastKnownPosition (maximumAgeMs)', async () => {
+    needsGrant()
+    const any = await Location.getLastKnownPosition()
+    const recent = await Location.getLastKnownPosition({ maximumAgeMs: 2 * 60 * 1000 })
+    const tooOld = await Location.getLastKnownPosition({ maximumAgeMs: 1 })
+    if (recent) {
+      expect(Date.now() - recent.timestamp < 2 * 60 * 1000 + 5000, 'recent fix is too old')
+    }
+    expect(tooOld === undefined || Date.now() - tooOld.timestamp < 1000, '1 ms maxAge returned an old fix')
+    return { any: !!any, recent: !!recent, tooOld: !!tooOld }
+  })
+  await check('Accuracy presets (Low / Balanced / High)', async () => {
+    expect(Location.Accuracy.Low === 'kilometer', 'Low')
+    expect(Location.Accuracy.Balanced === 'hundredMeters', 'Balanced')
+    expect(Location.Accuracy.High === 'nearestTenMeters', 'High')
+    needsGrant()
+    const fixes: Record<string, number> = {}
+    for (const preset of ['Low', 'Balanced', 'High'] as const) {
+      const location = await Location.getCurrentPosition({
+        accuracy: Location.Accuracy[preset],
+        timeoutMs: 15000,
+      })
+      fixes[preset] = Math.round(location.horizontalAccuracy)
+    }
+    return fixes
+  })
+  await check('subscribeToPosition / remove (5 s)', async () => {
+    needsGrant()
+    const locations: Location.Location[] = []
+    const subscription = Location.subscribeToPosition(
+      location => locations.push(location),
+      { accuracy: Location.Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
+    )
+    await sleep(5000)
+    subscription.remove()
+    subscription.remove()
+    const count = locations.length
+    await sleep(2500)
+    expect(count > 0, 'no locations')
+    expect(locations.length === count, `updates after remove (${locations.length - count})`)
+    return { count, watchId: subscription.watchId }
   })
 
   // ---------- Background ----------
@@ -353,6 +408,25 @@ export async function runChecks(
     expect(events.length > 0, 'no heading events')
     return { count: events.length, last: events[events.length - 1] }
   })
+  await check('subscribeToHeading / remove (3 s)', async () => {
+    if (!capabilities?.headingAvailable) throw new Skip('no compass')
+    const headings: Location.Heading[] = []
+    const subscription = Location.subscribeToHeading(heading => headings.push(heading), {
+      headingFilter: 0,
+    })
+    await sleep(3000)
+    subscription.remove()
+    const count = headings.length
+    await sleep(1000)
+    expect(count > 0, 'no headings')
+    expect(headings.length === count, 'headings after remove')
+    const last = headings[headings.length - 1]!
+    return {
+      count,
+      // expo-location's watchHeadingAsync pattern: trueHeading else magHeading.
+      heading: last.trueHeading >= 0 ? last.trueHeading : last.magneticHeading,
+    }
+  })
   await check('altitude events (3 s)', async () => {
     if (!capabilities?.altimeterAvailable) throw new Skip('no barometer')
     const errors: unknown[] = []
@@ -470,6 +544,33 @@ export async function runChecks(
     }
   })
 
+  // ---------- Location push ----------
+  await check('startMonitoringLocationPushes / stop', async () => {
+    if (!ios) {
+      try {
+        await Location.startMonitoringLocationPushes()
+      } catch (error) {
+        expect((error as Location.LocationError).code === 'E_UNSUPPORTED', 'expected E_UNSUPPORTED')
+        Location.stopMonitoringLocationPushes()
+        return 'unsupported on Android (expected)'
+      }
+      throw new Error('Android location push should be unsupported')
+    }
+    expect(capabilities?.locationPushAvailable === true, 'locationPushAvailable is false')
+    let token: string
+    try {
+      token = await Location.startMonitoringLocationPushes()
+    } catch (error) {
+      const err = error as Location.LocationError
+      expect(err.code === 'E_LOCATION_PUSH', `expected E_LOCATION_PUSH, got ${err.code}`)
+      throw new Skip(`iOS refused (entitlement not provisioned?): ${err.message}`)
+    } finally {
+      Location.stopMonitoringLocationPushes()
+    }
+    expect(/^[0-9a-f]{64,}$/.test(token), `token is not hex: ${token}`)
+    return { tokenLength: token.length, tokenPrefix: token.slice(0, 8) }
+  })
+
   // ---------- Utilities ----------
   await check('getDistance / getBearing / getDestination', async () => {
     // Vincenty's published test line: Flinders Peak -> Buninyong.
@@ -502,12 +603,16 @@ export async function runChecks(
   }
 }
 
-/** Persists the report: Documents/munim-location-checks.json on iOS, logcat on Android. */
+/** Persists the report: Documents/munim-location-checks.json on iOS, one logcat line per check on Android. */
 export async function saveReport(report: ChecksReport): Promise<string | undefined> {
   const json = JSON.stringify(report, null, 2)
   const writer = NativeModules.ChecksReport as
     | { write(json: string): Promise<string> }
     | undefined
+  report.results.forEach(result => {
+    const note = result.error ?? JSON.stringify(result.detail ?? '').slice(0, 300)
+    console.log(`MUNIM_LOCATION_CHECK ${result.status} ${result.name} ${note}`)
+  })
   console.log(`MUNIM_LOCATION_CHECKS ${JSON.stringify(report.summary)}`)
   if (!writer) return undefined
   return writer.write(json)

@@ -321,6 +321,8 @@ function BackgroundScreen() {
         />
         <Button title="Status" onPress={() => attempt('getBackgroundStatus', Location.getBackgroundStatus)} />
         <Button title="Pending events" onPress={() => attempt('getPendingBackgroundEvents', Location.getPendingBackgroundEvents)} />
+        <Button title="Location push token" onPress={() => attempt('startMonitoringLocationPushes', Location.startMonitoringLocationPushes)} />
+        <Button title="Stop location push" onPress={() => attempt('stopMonitoringLocationPushes', Location.stopMonitoringLocationPushes)} />
       </Row>
     </Section>
   )

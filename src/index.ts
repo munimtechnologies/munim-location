@@ -95,6 +95,7 @@ export type LocationErrorCode =
   | 'E_NO_ACTIVITY'
   | 'E_MOTION_PERMISSION_DENIED'
   | 'E_MOTION_PERMISSION_PENDING'
+  | 'E_LOCATION_PUSH'
   | 'E_UNSUPPORTED'
   | 'E_LOCATION_ERROR'
 
@@ -650,6 +651,34 @@ export function startBackgroundActivitySession(): ServiceSession {
 
 // ========== Positions ==========
 
+/**
+ * Accuracy presets with the same meaning as expo-location's `Accuracy`
+ * enum. Each is a `LocationAccuracy` value, so it works anywhere an
+ * `accuracy` option does. On Android `priority: 'auto'` (the default) maps
+ * them to the same Fused Location Provider priorities Expo uses.
+ */
+export const Accuracy = {
+  /** ~3 km (Android low power). */
+  Lowest: 'threeKilometers',
+  /** ~1 km (Android low power). */
+  Low: 'kilometer',
+  /** ~100 m (Android balanced power). */
+  Balanced: 'hundredMeters',
+  /** ~10 m (Android high accuracy). */
+  High: 'nearestTenMeters',
+  /** Best the device can do (Android high accuracy). */
+  Highest: 'best',
+  /** Best plus sensor fusion, for navigation (Android high accuracy). */
+  BestForNavigation: 'bestForNavigation',
+} as const satisfies Record<string, LocationAccuracy>
+
+export type AccuracyPreset = keyof typeof Accuracy
+
+/** A running subscription. `remove()` stops it; calling it twice is safe. */
+export interface LocationSubscription {
+  remove(): void
+}
+
 const DEFAULT_CURRENT: CurrentPositionOptions = {
   accuracy: 'best',
   priority: 'auto',
@@ -715,6 +744,27 @@ export function watchPosition(
 export function clearWatch(watchId: number): void {
   watchHandlers.delete(watchId)
   MunimLocation.clearWatch(watchId)
+}
+
+/**
+ * `watchPosition()` with a subscription handle instead of a watch id, like
+ * expo-location's `watchPositionAsync`: call `remove()` to stop.
+ */
+export function subscribeToPosition(
+  onLocation: (location: Location) => void,
+  options: Partial<WatchOptions> = {},
+  onError?: (error: LocationError) => void
+): LocationSubscription & { watchId: number } {
+  const watchId = watchPosition(onLocation, onError, options)
+  let removed = false
+  return {
+    watchId,
+    remove: () => {
+      if (removed) return
+      removed = true
+      clearWatch(watchId)
+    },
+  }
 }
 
 export function clearAllWatches(): void {
@@ -904,6 +954,34 @@ export function stopHeadingUpdates(): void {
   MunimLocation.stopHeadingUpdates()
 }
 
+let headingSubscribers = 0
+
+/**
+ * Compass updates with a subscription handle, like expo-location's
+ * `watchHeadingAsync`. Heading updates run while at least one subscription
+ * is active; the last `remove()` stops them (including updates started with
+ * `startHeadingUpdates()`). `trueHeading` is -1 until a location fix is
+ * known, so fall back to `magneticHeading`.
+ */
+export function subscribeToHeading(
+  onHeading: (heading: Heading) => void,
+  options: Partial<HeadingOptions> = {}
+): LocationSubscription {
+  const unsubscribe = addEventListener('heading', onHeading)
+  headingSubscribers += 1
+  startHeadingUpdates(options)
+  let removed = false
+  return {
+    remove: () => {
+      if (removed) return
+      removed = true
+      unsubscribe()
+      headingSubscribers = Math.max(0, headingSubscribers - 1)
+      if (headingSubscribers === 0) stopHeadingUpdates()
+    },
+  }
+}
+
 export function getCurrentHeading(timeoutMs = 5000): Promise<Heading> {
   return call(() => MunimLocation.getCurrentHeading(timeoutMs))
 }
@@ -1009,6 +1087,29 @@ export function setMockLocation(
       ...location,
     })
   )
+}
+
+// ========== Location push (iOS) ==========
+
+/**
+ * iOS 15+: starts monitoring APNs `location` pushes and resolves with the
+ * hex APNs token your server sends them to (`apns-push-type: location`,
+ * topic `<bundle id>.location-query`). A push wakes the app's Location Push
+ * Service Extension, which takes a fix and reports it (see
+ * docs/location-push.md). Pushes are delivered only once the person has
+ * granted Always access. Needs the `com.apple.developer.location.push`
+ * entitlement (Expo plugin option `iosLocationPushEntitlement`).
+ *
+ * Rejects with `E_UNSUPPORTED` on Android and before iOS 15, and with
+ * `E_LOCATION_PUSH` when iOS refuses (for example a missing entitlement).
+ */
+export function startMonitoringLocationPushes(): Promise<string> {
+  return call(() => MunimLocation.startMonitoringLocationPushes())
+}
+
+/** Stops location push monitoring. A no-op on Android. */
+export function stopMonitoringLocationPushes(): void {
+  MunimLocation.stopMonitoringLocationPushes()
 }
 
 // ========== Utilities ==========
@@ -1149,6 +1250,7 @@ export function isPointWithinRadius(
 }
 
 export default {
+  Accuracy,
   addEventListener,
   registerBackgroundHandler,
   getPendingBackgroundEvents,
@@ -1170,6 +1272,7 @@ export default {
   getCurrentPosition,
   getLastKnownPosition,
   watchPosition,
+  subscribeToPosition,
   clearWatch,
   clearAllWatches,
   startBackgroundUpdates,
@@ -1192,6 +1295,7 @@ export default {
   stopBeaconMonitoring,
   startHeadingUpdates,
   stopHeadingUpdates,
+  subscribeToHeading,
   getCurrentHeading,
   dismissHeadingCalibrationDisplay,
   startAltitudeUpdates,
@@ -1204,6 +1308,8 @@ export default {
   reverseGeocode,
   setMockLocationEnabled,
   setMockLocation,
+  startMonitoringLocationPushes,
+  stopMonitoringLocationPushes,
   isLocationAvailable,
   getCapabilities,
   getDistance,
