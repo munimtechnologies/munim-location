@@ -34,7 +34,14 @@ class ChecksReportModule(context: ReactApplicationContext) : ReactContextBaseJav
     }
   }
 
+  /** Background handler breadcrumbs (visible in Release logcat as MUNIM_LOCATION_BG). */
+  @ReactMethod
+  fun logBackground(message: String) {
+    Log.i(BACKGROUND_TAG, message.take(3000))
+  }
+
   companion object {
+    const val BACKGROUND_TAG = "MUNIM_LOCATION_BG"
     const val NAME = "ChecksReport"
     const val TAG = "MUNIM_LOCATION_CHECKS"
   }

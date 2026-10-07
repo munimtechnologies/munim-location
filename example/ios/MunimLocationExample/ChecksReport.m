@@ -37,4 +37,9 @@ RCT_EXPORT_METHOD(write:(NSString *)json
   resolve(url.path);
 }
 
+RCT_EXPORT_METHOD(logBackground:(NSString *)message)
+{
+  NSLog(@"MUNIM_LOCATION_BG %@", message);
+}
+
 @end

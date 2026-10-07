@@ -535,8 +535,21 @@ export default function App() {
   // munimlocationexample://checks runs the checks (no auto-run on launch).
   useEffect(() => {
     const handle = (url: string | null | undefined) => {
-      if (url && url.replace(/\/$/, '').endsWith('://checks')) {
+      const route = url?.replace(/\/$/, '').split('://')[1]
+      if (route === 'checks') {
         run()
+      } else if (route === 'background-start') {
+        // Headless probe: PendingIntent delivery keeps arriving after the
+        // process is killed (Headless JS or the persisted queue).
+        attempt('startBackgroundUpdates (deep link)', () =>
+          Location.startBackgroundUpdates({
+            intervalMs: 2000,
+            fastestIntervalMs: 1000,
+            android: { mode: 'pendingIntent' },
+          }),
+        )
+      } else if (route === 'background-stop') {
+        attempt('stopBackgroundUpdates (deep link)', Location.stopBackgroundUpdates)
       }
     }
     Linking.getInitialURL().then(handle)
