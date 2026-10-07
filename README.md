@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/munimtechnologies/munim-location">
-    <img alt="Munim Technologies Location" height="128" src="./.github/resources/banner.png?v=1">
+    <img alt="Munim Technologies Location" height="128" src="./.github/resources/banner.png?v=3">
     <h1 align="center">munim-location</h1>
   </a>
 </p>
