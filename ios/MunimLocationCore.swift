@@ -169,6 +169,12 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
 
     // MARK: - Permissions
 
+    /// Creates the authorization manager so `authorizationChanged` fires
+    /// even before any other call touches Core Location.
+    func observeAuthorization() {
+        MunimLocationCore.onMain { _ = self.authManager }
+    }
+
     func permissionStatus(_ completion: @escaping (PermissionStatus) -> Void) {
         MunimLocationCore.servicesEnabled { enabled in
             MunimLocationCore.onMain {

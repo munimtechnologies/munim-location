@@ -40,6 +40,7 @@ final class HybridMunimLocation: HybridMunimLocationSpec {
 
     func setEventListener(listener: @escaping (_ name: String, _ payload: String) -> Void) throws {
         MunimLocationEvents.shared.setListener(listener)
+        core.observeAuthorization()
     }
 
     func removeEventListener() throws {
