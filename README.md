@@ -626,7 +626,7 @@ Barometric altitude as `altitude` events. iOS: `kind: 'relative'` (`relativeAlti
 
 #### `startGnssUpdates(options?)`, `stopGnssUpdates()`
 
-Needs fine location. Options: `status` (default `true`: `gnssStatus`, `gnssFirstFix`, `gnssStarted`, `gnssStopped`), `nmea` (`nmea`), and the opt-in high-rate streams `measurements` (`gnssMeasurements`) and `navigationMessages` (`gnssNavigationMessage`). iOS rejects with `E_UNSUPPORTED`.
+Needs fine location and keeps a GPS request open while running (GNSS callbacks only report while the engine runs). Options: `status` (default `true`: `gnssStatus`, `gnssFirstFix`, `gnssStarted`, `gnssStopped`), `nmea` (`nmea`), and the opt-in high-rate streams `measurements` (`gnssMeasurements`) and `navigationMessages` (`gnssNavigationMessage`). iOS rejects with `E_UNSUPPORTED`.
 
 ### Geocoding
 

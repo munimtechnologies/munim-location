@@ -6,7 +6,11 @@ import android.content.pm.PackageManager
 import android.location.GnssMeasurementsEvent
 import android.location.GnssNavigationMessage
 import android.location.GnssStatus
+import android.location.LocationManager
 import android.location.OnNmeaMessageListener
+import androidx.core.location.LocationListenerCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.location.LocationRequestCompat
 import android.os.Build
 import com.margelo.nitro.munimlocation.GnssInfo
 import com.margelo.nitro.munimlocation.GnssOptions
@@ -18,6 +22,7 @@ object LocationGnss {
   private var nmeaListener: OnNmeaMessageListener? = null
   private var measurementsCallback: GnssMeasurementsEvent.Callback? = null
   private var navigationCallback: GnssNavigationMessage.Callback? = null
+  private var engineListener: LocationListenerCompat? = null
 
   fun hasGps(context: Context): Boolean =
     context.packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)
@@ -96,6 +101,20 @@ object LocationGnss {
     stop(context)
     val manager = LocationEngine.locationManager(context)
     val handler = LocationEngine.handler
+
+    // GNSS callbacks only report while the GNSS engine runs, which needs an
+    // active GPS location request; keep one open for the session.
+    if (manager.allProviders.contains(LocationManager.GPS_PROVIDER)) {
+      val listener = LocationListenerCompat { }
+      LocationManagerCompat.requestLocationUpdates(
+        manager,
+        LocationManager.GPS_PROVIDER,
+        LocationRequestCompat.Builder(1_000L).setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY).build(),
+        LocationEngine.executor,
+        listener
+      )
+      engineListener = listener
+    }
 
     if (options.status) {
       val callback = object : GnssStatus.Callback() {
@@ -236,6 +255,8 @@ object LocationGnss {
     nmeaListener?.let { manager.removeNmeaListener(it) }
     measurementsCallback?.let { manager.unregisterGnssMeasurementsCallback(it) }
     navigationCallback?.let { manager.unregisterGnssNavigationMessageCallback(it) }
+    engineListener?.let { LocationManagerCompat.removeUpdates(manager, it) }
+    engineListener = null
     statusCallback = null
     nmeaListener = null
     measurementsCallback = null
