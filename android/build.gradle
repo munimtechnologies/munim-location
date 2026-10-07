@@ -43,6 +43,8 @@ android {
 
   defaultConfig {
     minSdk = getExtOrIntegerDefault("minSdkVersion")
+    // Keeps the classes the system and JNI reach by name in app release builds.
+    consumerProguardFiles "consumer-rules.pro"
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
 
     externalNativeBuild {

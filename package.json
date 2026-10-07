@@ -51,6 +51,7 @@
     "nitrogen",
     "nitro.json",
     "android/build.gradle",
+    "android/consumer-rules.pro",
     "android/fix-prefab.gradle",
     "android/gradle.properties",
     "android/CMakeLists.txt",
@@ -61,6 +62,7 @@
     "ios/**/*.cpp",
     "ios/**/*.swift",
     "app.plugin.js",
+    "docs",
     "*.podspec",
     "README.md",
     "CHANGELOG.md"
