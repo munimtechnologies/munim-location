@@ -1,3 +1,13 @@
+## [0.3.0](https://github.com/munimtechnologies/munim-location/compare/v0.2.0...v0.3.0) (2026-10-17)
+
+### ✨ Features
+
+* React Native 0.88 and Nitro Modules 0.37.1 ([#1](https://github.com/munimtechnologies/munim-location/issues/1)) ([0fbe215](https://github.com/munimtechnologies/munim-location/commit/0fbe215a5bd2257b0b08e92de4c5509d1e3506af))
+
+### 📚 Documentation
+
+* **example:** describe the munim-location example ([2ddc2b6](https://github.com/munimtechnologies/munim-location/commit/2ddc2b66ba7a48ab5f8894da687010cfac1e4d66))
+
 ## [0.2.0](https://github.com/munimtechnologies/munim-location/compare/v0.1.0...v0.2.0) (2026-10-07)
 
 ### ✨ Features
