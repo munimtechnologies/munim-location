@@ -1,3 +1,9 @@
+## [0.3.1](https://github.com/munimtechnologies/munim-location/compare/v0.3.0...v0.3.1) (2026-10-17)
+
+### 🐛 Bug Fixes
+
+* accept react-native-nitro-modules 0.36.5 again ([78f3617](https://github.com/munimtechnologies/munim-location/commit/78f36177ca1b0fcb9d2e0a5b49bf91e476c05ee0)), closes [margelo/nitro#1573](https://github.com/margelo/nitro/issues/1573)
+
 ## [0.3.0](https://github.com/munimtechnologies/munim-location/compare/v0.2.0...v0.3.0) (2026-10-17)
 
 ### ✨ Features
