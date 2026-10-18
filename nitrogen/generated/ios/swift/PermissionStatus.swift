@@ -18,8 +18,8 @@ public extension PermissionStatus {
   /**
    * Create a new instance of `PermissionStatus`.
    */
-  init(status: AuthorizationStatus, accuracy: AccuracyAuthorization, foreground: Bool, background: Bool, precise: Bool, canAskAgain: Bool, locationServicesEnabled: Bool) {
-    self.init(status, accuracy, foreground, background, precise, canAskAgain, locationServicesEnabled)
+  init(status: AuthorizationStatus, accuracy: AccuracyAuthorization, foreground: Bool, background: Bool, precise: Bool, canAskAgain: Bool, canAskAgainBackground: Bool, locationServicesEnabled: Bool) {
+    self.init(status, accuracy, foreground, background, precise, canAskAgain, canAskAgainBackground, locationServicesEnabled)
   }
 
   @inline(__always)
@@ -50,6 +50,11 @@ public extension PermissionStatus {
   @inline(__always)
   var canAskAgain: Bool {
     return self.__canAskAgain
+  }
+  
+  @inline(__always)
+  var canAskAgainBackground: Bool {
+    return self.__canAskAgainBackground
   }
   
   @inline(__always)

@@ -35,6 +35,17 @@ export interface PermissionStatus {
    * whenInUse, which can be upgraded to always once).
    */
   canAskAgain: boolean
+  /**
+   * Whether a background ("always") request can still show the system UI.
+   * False once background is granted, and once the user has permanently
+   * declined it: Android after the background request was denied and the
+   * rationale flag is false again ("don't ask again"); iOS after
+   * `requestBackgroundPermission()` already used its one-time upgrade
+   * prompt and the status is still whenInUse. Without foreground access it
+   * follows `canAskAgain` (background needs foreground first). Matches
+   * expo-location's background `canAskAgain`.
+   */
+  canAskAgainBackground: boolean
   /** System-wide location services switch. */
   locationServicesEnabled: boolean
 }

@@ -46,6 +46,8 @@ namespace margelo::nitro::munimlocation {
       jboolean precise = this->getFieldValue(fieldPrecise);
       static const auto fieldCanAskAgain = clazz->getField<jboolean>("canAskAgain");
       jboolean canAskAgain = this->getFieldValue(fieldCanAskAgain);
+      static const auto fieldCanAskAgainBackground = clazz->getField<jboolean>("canAskAgainBackground");
+      jboolean canAskAgainBackground = this->getFieldValue(fieldCanAskAgainBackground);
       static const auto fieldLocationServicesEnabled = clazz->getField<jboolean>("locationServicesEnabled");
       jboolean locationServicesEnabled = this->getFieldValue(fieldLocationServicesEnabled);
       return PermissionStatus(
@@ -55,6 +57,7 @@ namespace margelo::nitro::munimlocation {
         static_cast<bool>(background),
         static_cast<bool>(precise),
         static_cast<bool>(canAskAgain),
+        static_cast<bool>(canAskAgainBackground),
         static_cast<bool>(locationServicesEnabled)
       );
     }
@@ -65,7 +68,7 @@ namespace margelo::nitro::munimlocation {
      */
     [[maybe_unused]]
     static jni::local_ref<JPermissionStatus::javaobject> fromCpp(const PermissionStatus& value) {
-      using JSignature = JPermissionStatus(jni::alias_ref<JAuthorizationStatus>, jni::alias_ref<JAccuracyAuthorization>, jboolean, jboolean, jboolean, jboolean, jboolean);
+      using JSignature = JPermissionStatus(jni::alias_ref<JAuthorizationStatus>, jni::alias_ref<JAccuracyAuthorization>, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -76,6 +79,7 @@ namespace margelo::nitro::munimlocation {
         value.background,
         value.precise,
         value.canAskAgain,
+        value.canAskAgainBackground,
         value.locationServicesEnabled
       );
     }

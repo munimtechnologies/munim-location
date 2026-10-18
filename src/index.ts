@@ -516,6 +516,8 @@ export function requestForegroundPermission(
  * when nothing was granted yet, otherwise the one-time upgrade prompt.
  * Android 10: the system dialog; Android 11+: the app's location settings
  * page (the system shows it for this request). Grant foreground access first.
+ * Resolves right away with the current status when `canAskAgainBackground`
+ * is false (only Settings can grant background access then).
  */
 export function requestBackgroundPermission(): Promise<PermissionStatus> {
   return call(() => MunimLocation.requestBackgroundPermission())

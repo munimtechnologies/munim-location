@@ -194,8 +194,27 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             background: status == .authorizedAlways,
             precise: foreground && accuracy == .full,
             canAskAgain: status == .notDetermined || status == .authorizedWhenInUse,
+            canAskAgainBackground: canAskAgainBackground(status),
             locationServicesEnabled: servicesEnabled
         )
+    }
+
+    private static let alwaysRequestedKey = defaultsPrefix + "always.requested"
+
+    /// iOS honours `requestAlwaysAuthorization()` once per install ("further
+    /// calls have no effect"), so once it ran and the user stayed on
+    /// when-in-use, only Settings can grant always. notDetermined stays
+    /// askable: the status only returns there after "Allow Once" or a
+    /// Settings reset, and requesting then shows a prompt again.
+    private func canAskAgainBackground(_ status: CLAuthorizationStatus) -> Bool {
+        switch status {
+        case .notDetermined:
+            return true
+        case .authorizedWhenInUse:
+            return !defaults.bool(forKey: MunimLocationCore.alwaysRequestedKey)
+        default:
+            return false
+        }
     }
 
     func requestForeground(_ completion: @escaping (PermissionStatus) -> Void) {
@@ -215,7 +234,10 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             // notDetermined: the provisional-always flow (the user sees the
             // when-in-use prompt; iOS later offers the upgrade itself).
             // whenInUse: iOS shows the one-time upgrade prompt.
-            if status == .notDetermined || status == .authorizedWhenInUse {
+            // After the one allowed request iOS shows nothing, so resolve
+            // right away instead of waiting out the prompt grace period.
+            if self.canAskAgainBackground(status) {
+                self.defaults.set(true, forKey: MunimLocationCore.alwaysRequestedKey)
                 self.waitForPrompt(completion)
                 self.authManager.requestAlwaysAuthorization()
             } else {
@@ -1146,6 +1168,7 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             "background": status.background,
             "precise": status.precise,
             "canAskAgain": status.canAskAgain,
+            "canAskAgainBackground": status.canAskAgainBackground,
             "locationServicesEnabled": status.locationServicesEnabled,
         ]
     }

@@ -38,6 +38,9 @@ data class PermissionStatus(
   val canAskAgain: Boolean,
   @DoNotStrip
   @Keep
+  val canAskAgainBackground: Boolean,
+  @DoNotStrip
+  @Keep
   val locationServicesEnabled: Boolean
 ) {
   /* primary constructor */
@@ -51,6 +54,7 @@ data class PermissionStatus(
       && Objects.deepEquals(this.background, other.background)
       && Objects.deepEquals(this.precise, other.precise)
       && Objects.deepEquals(this.canAskAgain, other.canAskAgain)
+      && Objects.deepEquals(this.canAskAgainBackground, other.canAskAgainBackground)
       && Objects.deepEquals(this.locationServicesEnabled, other.locationServicesEnabled)
   }
 
@@ -62,6 +66,7 @@ data class PermissionStatus(
       background,
       precise,
       canAskAgain,
+      canAskAgainBackground,
       locationServicesEnabled
     ).contentDeepHashCode()
   }
@@ -74,8 +79,8 @@ data class PermissionStatus(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(status: AuthorizationStatus, accuracy: AccuracyAuthorization, foreground: Boolean, background: Boolean, precise: Boolean, canAskAgain: Boolean, locationServicesEnabled: Boolean): PermissionStatus {
-      return PermissionStatus(status, accuracy, foreground, background, precise, canAskAgain, locationServicesEnabled)
+    private fun fromCpp(status: AuthorizationStatus, accuracy: AccuracyAuthorization, foreground: Boolean, background: Boolean, precise: Boolean, canAskAgain: Boolean, canAskAgainBackground: Boolean, locationServicesEnabled: Boolean): PermissionStatus {
+      return PermissionStatus(status, accuracy, foreground, background, precise, canAskAgain, canAskAgainBackground, locationServicesEnabled)
     }
   }
 }

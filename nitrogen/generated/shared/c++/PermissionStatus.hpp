@@ -49,11 +49,12 @@ namespace margelo::nitro::munimlocation {
     bool background     SWIFT_PRIVATE;
     bool precise     SWIFT_PRIVATE;
     bool canAskAgain     SWIFT_PRIVATE;
+    bool canAskAgainBackground     SWIFT_PRIVATE;
     bool locationServicesEnabled     SWIFT_PRIVATE;
 
   public:
     PermissionStatus() = default;
-    explicit PermissionStatus(AuthorizationStatus status, AccuracyAuthorization accuracy, bool foreground, bool background, bool precise, bool canAskAgain, bool locationServicesEnabled): status(status), accuracy(accuracy), foreground(foreground), background(background), precise(precise), canAskAgain(canAskAgain), locationServicesEnabled(locationServicesEnabled) {}
+    explicit PermissionStatus(AuthorizationStatus status, AccuracyAuthorization accuracy, bool foreground, bool background, bool precise, bool canAskAgain, bool canAskAgainBackground, bool locationServicesEnabled): status(status), accuracy(accuracy), foreground(foreground), background(background), precise(precise), canAskAgain(canAskAgain), canAskAgainBackground(canAskAgainBackground), locationServicesEnabled(locationServicesEnabled) {}
 
   public:
     friend bool operator==(const PermissionStatus& lhs, const PermissionStatus& rhs) = default;
@@ -75,6 +76,7 @@ namespace margelo::nitro {
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "background"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "precise"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canAskAgain"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canAskAgainBackground"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "locationServicesEnabled")))
       );
     }
@@ -86,6 +88,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "background"), JSIConverter<bool>::toJSI(runtime, arg.background));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "precise"), JSIConverter<bool>::toJSI(runtime, arg.precise));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "canAskAgain"), JSIConverter<bool>::toJSI(runtime, arg.canAskAgain));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "canAskAgainBackground"), JSIConverter<bool>::toJSI(runtime, arg.canAskAgainBackground));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "locationServicesEnabled"), JSIConverter<bool>::toJSI(runtime, arg.locationServicesEnabled));
       return obj;
     }
@@ -103,6 +106,7 @@ namespace margelo::nitro {
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "background")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "precise")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canAskAgain")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canAskAgainBackground")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "locationServicesEnabled")))) return false;
       return true;
     }

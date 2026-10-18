@@ -426,7 +426,7 @@ console.log(address?.formattedAddress)
 munim-location covers everything an app usually takes from `expo-location` (and `expo-task-manager` for location tasks), plus iOS location pushes. The main differences:
 
 - **Flat locations.** A `Location` is flat: `location.latitude`, not `location.coords.latitude`.
-- **Booleans for permission.** `PermissionStatus` has `foreground` and `background` booleans instead of `status === 'granted'`, and the same `canAskAgain`.
+- **Booleans for permission.** `PermissionStatus` has `foreground` and `background` booleans instead of `status === 'granted'`. `canAskAgain` is the foreground one; the background one is `canAskAgainBackground`.
 - **No task names.** Background events go to one handler registered with `registerBackgroundHandler()` at the top level of your entry file, instead of `TaskManager.defineTask()` per task. On Android it runs as Headless JS when the app was started only to deliver the event.
 - **Synchronous subscriptions.** `subscribeToPosition()` and `subscribeToHeading()` return the subscription directly (no Promise).
 - **Native timeouts.** `getCurrentPosition({ timeoutMs })` cancels the native request when it times out, so headless code does not need a `Promise.race` wrapper.
@@ -437,7 +437,7 @@ munim-location covers everything an app usually takes from `expo-location` (and 
 | --- | --- | --- |
 | `getForegroundPermissionsAsync()` | `getPermissionStatus()` | `status === 'granted'` → `foreground`; `canAskAgain` is the same. |
 | `requestForegroundPermissionsAsync()` | `requestForegroundPermission()` | Resolves with the new `PermissionStatus`. |
-| `getBackgroundPermissionsAsync()` | `getPermissionStatus()` | `status === 'granted'` → `background`. `canAskAgain` is `true` while foreground access can still be upgraded (iOS when-in-use, Android 10+). |
+| `getBackgroundPermissionsAsync()` | `getPermissionStatus()` | `status === 'granted'` → `background`; `canAskAgain` → `canAskAgainBackground` (`false` after the one iOS Always request, or after Android "don't ask again" for background). |
 | `requestBackgroundPermissionsAsync()` | `requestBackgroundPermission()` | iOS one-time upgrade prompt; Android 11+ opens the app's location settings page. |
 | `PermissionStatus.GRANTED` | `permission.foreground` / `permission.background` | `permission.status` is `notDetermined`, `restricted`, `denied`, `whenInUse`, or `always`. |
 | `hasServicesEnabledAsync()` | `isLocationServicesEnabled()` | |
@@ -563,7 +563,18 @@ Every Promise rejects with a `LocationError` whose `code` is stable (`E_LOCATION
 
 Returns the current permission state without prompting.
 
-**Returns:** `Promise<PermissionStatus>` — `{ status, accuracy, foreground, background, precise, canAskAgain, locationServicesEnabled }`. `status` is `notDetermined`, `restricted`, `denied`, `whenInUse`, or `always`; `accuracy` is `full` or `reduced`.
+**Returns:** `Promise<PermissionStatus>` — `{ status, accuracy, foreground, background, precise, canAskAgain, canAskAgainBackground, locationServicesEnabled }`. `status` is `notDetermined`, `restricted`, `denied`, `whenInUse`, or `always`; `accuracy` is `full` or `reduced`.
+
+- `canAskAgain` — whether a foreground prompt (or an upgrade from approximate to precise) can still be shown. Android: `false` after "don't ask again".
+- `canAskAgainBackground` — whether `requestBackgroundPermission()` can still show anything. `false` once background is granted, and when only Settings can grant it: on iOS after `requestBackgroundPermission()` used its one-time Always prompt (recorded in `UserDefaults`, so it resets on reinstall) and the status is still `whenInUse`; on Android 10+ after the background request was denied and `shouldShowRequestPermissionRationale(ACCESS_BACKGROUND_LOCATION)` is `false` again (the same rule as foreground). Without foreground access it follows `canAskAgain`. When `background` and `canAskAgainBackground` are both `false`, offer `openAppSettings()`.
+
+```typescript
+const permission = await getPermissionStatus()
+if (!permission.background && !permission.canAskAgainBackground) {
+  // Blocked: only Settings can grant Always now.
+  await openAppSettings()
+}
+```
 
 #### `requestForegroundPermission(options?)`
 
@@ -573,7 +584,7 @@ Requests when-in-use access. `options.precise` (default `true`) controls whether
 
 #### `requestBackgroundPermission()`
 
-Requests always / background access. iOS: when nothing is granted yet, the provisional-always flow (the user sees the when-in-use prompt and iOS offers the upgrade later); from when-in-use, the one-time upgrade prompt. iOS does not call back when it decides not to show a prompt, so the Promise resolves with the current status after the prompt closes or after a short grace period. Android 10 shows the dialog; Android 11+ opens the app's location settings page. Request foreground access first.
+Requests always / background access. iOS: when nothing is granted yet, the provisional-always flow (the user sees the when-in-use prompt and iOS offers the upgrade later); from when-in-use, the one-time upgrade prompt. iOS does not call back when it decides not to show a prompt, so the Promise resolves with the current status after the prompt closes or after a short grace period. Android 10 shows the dialog; Android 11+ opens the app's location settings page. Request foreground access first. When `canAskAgainBackground` is `false` it resolves right away with the current status, without a prompt or grace period, so calling it again after a denial is cheap.
 
 **Returns:** `Promise<PermissionStatus>`
 

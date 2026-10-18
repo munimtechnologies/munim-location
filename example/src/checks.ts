@@ -129,6 +129,14 @@ export async function runChecks(
   await check('permission status shape (expo-location parity)', async () => {
     const status = await Location.getPermissionStatus()
     expect(typeof status.canAskAgain === 'boolean', 'canAskAgain missing')
+    expect(
+      typeof status.canAskAgainBackground === 'boolean',
+      'canAskAgainBackground missing'
+    )
+    expect(
+      !status.background || !status.canAskAgainBackground,
+      'canAskAgainBackground should be false once background is granted'
+    )
     expect(typeof status.foreground === 'boolean', 'foreground missing')
     expect(typeof status.background === 'boolean', 'background missing')
     return {
@@ -136,6 +144,7 @@ export async function runChecks(
       foreground: status.foreground,
       background: status.background,
       canAskAgain: status.canAskAgain,
+      canAskAgainBackground: status.canAskAgainBackground,
     }
   })
   await check('isLocationServicesEnabled', () => Location.isLocationServicesEnabled())

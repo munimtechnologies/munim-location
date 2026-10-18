@@ -94,6 +94,18 @@ object LocationPermissions {
       !background && Build.VERSION.SDK_INT >= 29 -> true
       else -> false
     }
+    val canAskAgainBackground = when {
+      background -> false
+      // Background needs foreground first, so the path stays open exactly
+      // as long as the foreground prompt can still be shown.
+      !foreground -> canAskAgain
+      // Below Android 10 background is implied by foreground.
+      Build.VERSION.SDK_INT < 29 -> false
+      // Same rule as foreground: asked before and the rationale flag is
+      // false again means "don't ask again" (or a second denial).
+      else -> !LocationStore.getBoolean(context, LocationStore.ASKED_BACKGROUND) ||
+        rationale(activity, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    }
     return PermissionStatus(
       status = status,
       accuracy = if (fine) AccuracyAuthorization.FULL else AccuracyAuthorization.REDUCED,
@@ -101,6 +113,7 @@ object LocationPermissions {
       background = background,
       precise = fine,
       canAskAgain = canAskAgain,
+      canAskAgainBackground = canAskAgainBackground,
       locationServicesEnabled = servicesEnabled(context)
     )
   }

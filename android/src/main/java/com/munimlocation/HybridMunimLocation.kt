@@ -100,6 +100,7 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
     "background" to status.background,
     "precise" to status.precise,
     "canAskAgain" to status.canAskAgain,
+    "canAskAgainBackground" to status.canAskAgainBackground,
     "locationServicesEnabled" to status.locationServicesEnabled
   )
 
@@ -187,9 +188,12 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
 
   override fun requestBackgroundPermission(): Promise<PermissionStatus> = promise { resolve, reject ->
     val current = LocationPermissions.status(context)
-    if (Build.VERSION.SDK_INT < 29 || current.background || !current.foreground) {
+    if (Build.VERSION.SDK_INT < 29 || current.background || !current.foreground ||
+      !current.canAskAgainBackground
+    ) {
       // Below Android 10 background is implied; without foreground access
-      // Android ignores the background request.
+      // Android ignores the background request; after "don't ask again"
+      // Android drops the request without showing anything.
       resolve(current)
       return@promise
     }
