@@ -225,15 +225,25 @@ export async function runChecks(
     needsGrant()
     const locations: Location.Location[] = []
     const errors: string[] = []
+    const started = Date.now()
+    let firstFixMs: number | undefined
     const id = Location.watchPosition(
-      location => locations.push(location),
+      location => {
+        firstFixMs ??= Date.now() - started
+        locations.push(location)
+      },
       error => errors.push(error.code),
       { accuracy: 'nearestTenMeters', intervalMs: 1000 }
     )
     await sleep(6000)
     Location.clearWatch(id)
     expect(locations.length > 0, `no locations (errors: ${errors.join(', ') || 'none'})`)
-    return { count: locations.length, last: locations[locations.length - 1], errors }
+    return {
+      count: locations.length,
+      firstFixWithinMs: firstFixMs,
+      last: locations[locations.length - 1],
+      errors,
+    }
   })
   await check('watchPosition liveUpdates (iOS 17+)', async () => {
     if (!ios || !capabilities?.liveUpdatesAvailable) throw new Skip('iOS 17+ only')
@@ -269,31 +279,105 @@ export async function runChecks(
     expect(Location.Accuracy.Balanced === 'hundredMeters', 'Balanced')
     expect(Location.Accuracy.High === 'nearestTenMeters', 'High')
     needsGrant()
-    const fixes: Record<string, number> = {}
+    // Every preset is tried and reported, so a failure names the preset.
+    // Low / Balanced are low-power requests: indoors without cell service
+    // (Wi-Fi only) Android may not compute a fresh one within the timeout.
+    const fixes: Record<string, number | string> = {}
+    const failed: string[] = []
     for (const preset of ['Low', 'Balanced', 'High'] as const) {
-      const location = await Location.getCurrentPosition({
-        accuracy: Location.Accuracy[preset],
-        timeoutMs: 15000,
-      })
-      fixes[preset] = Math.round(location.horizontalAccuracy)
+      try {
+        const location = await Location.getCurrentPosition({
+          accuracy: Location.Accuracy[preset],
+          timeoutMs: 15000,
+        })
+        fixes[preset] = Math.round(location.horizontalAccuracy)
+      } catch (error) {
+        fixes[preset] = (error as Location.LocationError).code ?? String(error)
+        failed.push(preset)
+      }
     }
+    expect(failed.length === 0, `no fix for ${failed.join(', ')}: ${JSON.stringify(fixes)}`)
     return fixes
   })
-  await check('subscribeToPosition / remove (5 s)', async () => {
+  await check('subscribeToPosition / remove (first fix, then 2.5 s)', async () => {
     needsGrant()
     const locations: Location.Location[] = []
+    const started = Date.now()
     const subscription = Location.subscribeToPosition(
       location => locations.push(location),
       { accuracy: Location.Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
     )
-    await sleep(5000)
+    // This check is about remove(); wait for the first fix (up to 20 s),
+    // then let updates run for the rest of 5 s before removing.
+    let firstFixMs: number | undefined
+    while (Date.now() - started < 20000) {
+      if (firstFixMs === undefined && locations.length > 0) firstFixMs = Date.now() - started
+      if (firstFixMs !== undefined && Date.now() - started >= 5000) break
+      await sleep(100)
+    }
     subscription.remove()
     subscription.remove()
     const count = locations.length
     await sleep(2500)
-    expect(count > 0, 'no locations')
+    expect(count > 0, `no locations within ${Date.now() - started - 2500} ms`)
     expect(locations.length === count, `updates after remove (${locations.length - count})`)
-    return { count, watchId: subscription.watchId }
+    return { count, watchId: subscription.watchId, firstFixWithinMs: firstFixMs }
+  })
+  await check('subscribeToPositionBatches (native batching, 7 s)', async () => {
+    needsGrant()
+    const batches: number[] = []
+    const subscription = Location.subscribeToPositionBatches(
+      locations => batches.push(locations.length),
+      { accuracy: Location.Accuracy.Balanced, intervalMs: 1000, batchSize: 3, batchIntervalMs: 6000 }
+    )
+    await sleep(7000)
+    await Location.flushLocations()
+    await sleep(300)
+    subscription.remove()
+    const fixes = batches.reduce((sum, size) => sum + size, 0)
+    expect(batches.length > 0, 'no batches')
+    // Each JS wake-up carries several fixes (unless fixes were too sparse).
+    expect(fixes < 3 || batches.length < fixes, `fixes were not batched: ${batches.join(',')}`)
+    return { batches: batches.length, fixes, sizes: batches }
+  })
+  await check('flushLocations', () => Location.flushLocations())
+  await check('watchPosition pauseWhenStationary (start / stop)', async () => {
+    needsGrant()
+    const id = Location.watchPosition(() => {}, undefined, {
+      accuracy: 'hundredMeters',
+      pauseWhenStationary: true,
+    })
+    await sleep(1500)
+    Location.clearWatch(id)
+    return { watchId: id, background: Location.getBackgroundStatus().stationaryPaused }
+  })
+
+  // ---------- Motion activity ----------
+  await check('getMotionPermission', async () => {
+    const motion = await Location.getMotionPermission()
+    expect(
+      ['notDetermined', 'granted', 'denied', 'restricted', 'unavailable'].includes(motion),
+      `unexpected value ${motion}`
+    )
+    if (capabilities) {
+      expect(
+        (motion === 'unavailable') === !capabilities.motionActivityAvailable,
+        'motionActivityAvailable disagrees with the permission'
+      )
+    }
+    return motion
+  })
+  await check('motion activity (4 s)', async () => {
+    const motion = await Location.getMotionPermission()
+    if (motion !== 'granted') throw new Skip(`needs motion permission (${motion})`)
+    const activities: Location.MotionActivity[] = []
+    const subscription = Location.subscribeToMotionActivity(activity => activities.push(activity))
+    await sleep(4000)
+    subscription.remove()
+    const last = await Location.getLastMotionActivity()
+    // Android reports transitions only, so an empty list is fine there.
+    if (ios) expect(activities.length > 0, 'no motion activity on iOS')
+    return { events: activities.length, last: last ?? 'none yet' }
   })
 
   // ---------- Background ----------

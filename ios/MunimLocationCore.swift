@@ -60,6 +60,10 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
     private var lastHeading: Heading?
     private let altimeter = CMAltimeter()
     private var monitorEngine: AnyObject?
+    private var backgroundBatcher: LocationBatcher?
+    private var backgroundGate: StationaryGate?
+    private let stateLock = NSLock()
+    private var backgroundStationaryPaused = false
 
     private override init() {
         super.init()
@@ -129,6 +133,7 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
         if defaults.bool(forKey: defaultsPrefix + "background.running"),
            let stored = defaults.dictionary(forKey: defaultsPrefix + "background.options") {
             configureBackgroundManager(stored)
+            configureBackgroundPipeline(stored)
             backgroundManager.startUpdatingLocation()
         }
     }
@@ -450,7 +455,93 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             "activityType": options.activityType.stringValue,
             "pauses": options.pausesLocationUpdatesAutomatically,
             "showsIndicator": options.showsBackgroundLocationIndicator,
+            "batchSize": options.batchSize,
+            "batchIntervalMs": options.batchIntervalMs,
+            "pauseWhenStationary": options.pauseWhenStationary,
         ]
+    }
+
+    /// Batching and the stationary pause for background updates.
+    private func configureBackgroundPipeline(_ stored: [String: Any]) {
+        backgroundBatcher?.flush()
+        backgroundBatcher = LocationBatcher(
+            size: stored["batchSize"] as? Double ?? 0,
+            intervalMs: stored["batchIntervalMs"] as? Double ?? 0
+        ) { locations in
+            MunimLocationEvents.shared.emitLocations(.background, watchId: 0, locations)
+        }
+        backgroundGate?.stop()
+        backgroundGate = nil
+        setBackgroundStationaryPaused(false)
+        if stored["pauseWhenStationary"] as? Bool ?? false {
+            let gate = StationaryGate(key: "background") { [weak self] paused in
+                self?.applyBackgroundStationary(paused, stored: stored)
+            }
+            backgroundGate = gate
+            gate.start()
+        }
+    }
+
+    private func applyBackgroundStationary(_ paused: Bool, stored: [String: Any]) {
+        setBackgroundStationaryPaused(paused)
+        if paused {
+            backgroundBatcher?.flush()
+            // Cell / Wi-Fi only and no deliveries; updates stay on so iOS
+            // keeps the app running and the motion stream can resume them.
+            backgroundManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+            backgroundManager.distanceFilter = CLLocationDistanceMax
+            MunimLocationEvents.shared.emit("locationUpdatesPaused", ["source": "motion"], persist: true)
+        } else {
+            configureBackgroundManager(stored)
+            MunimLocationEvents.shared.emit("locationUpdatesResumed", ["source": "motion"], persist: true)
+        }
+    }
+
+    private func setBackgroundStationaryPaused(_ paused: Bool) {
+        stateLock.lock()
+        backgroundStationaryPaused = paused
+        stateLock.unlock()
+    }
+
+    /// Hands buffered fixes to JavaScript now.
+    func flushLocations(_ completion: @escaping () -> Void) {
+        MunimLocationCore.onMain {
+            self.watches.values.forEach { $0.flush() }
+            self.backgroundBatcher?.flush()
+            completion()
+        }
+    }
+
+    // MARK: - Motion activity
+
+    func startMotionUpdates(_ completion: @escaping (Result<Void, Error>) -> Void) {
+        MunimLocationCore.onMain {
+            switch MunimLocationMotion.permission() {
+            case .unavailable:
+                completion(.failure(MunimLocationError.unsupported("Motion activity")))
+                return
+            case .denied, .restricted:
+                completion(.failure(MunimLocationError.make(
+                    "E_MOTION_PERMISSION_DENIED",
+                    "Motion & Fitness access is off for this app (needs NSMotionUsageDescription)"
+                )))
+                return
+            default:
+                break
+            }
+            MunimLocationMotion.shared.addObserver("js") { activity in
+                MunimLocationEvents.shared.emit("motionActivity", MunimLocationMotion.dict(activity))
+            }
+            completion(.success(()))
+        }
+    }
+
+    func stopMotionUpdates() {
+        MunimLocationMotion.shared.removeObserver("js")
+    }
+
+    func lastMotionActivity(_ completion: @escaping (MotionActivity?) -> Void) {
+        MunimLocationCore.onMain { completion(MunimLocationMotion.shared.last) }
     }
 
     private func configureBackgroundManager(_ stored: [String: Any]) {
@@ -482,6 +573,7 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
             self.defaults.set(stored, forKey: defaultsPrefix + "background.options")
             self.defaults.set(true, forKey: defaultsPrefix + "background.running")
             self.configureBackgroundManager(stored)
+            self.configureBackgroundPipeline(stored)
             self.backgroundManager.startUpdatingLocation()
             completion(.success(true))
         }
@@ -490,6 +582,11 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
     func stopBackground() {
         MunimLocationCore.onMain {
             self.defaults.set(false, forKey: defaultsPrefix + "background.running")
+            self.backgroundBatcher?.flush()
+            self.backgroundBatcher = nil
+            self.backgroundGate?.stop()
+            self.backgroundGate = nil
+            self.setBackgroundStationaryPaused(false)
             self.backgroundManager.stopUpdatingLocation()
             if self.backgroundModeEnabled {
                 self.backgroundManager.allowsBackgroundLocationUpdates = false
@@ -533,13 +630,17 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
 
     func backgroundStatus() -> BackgroundStatus {
         let running = defaults.bool(forKey: defaultsPrefix + "background.running")
+        stateLock.lock()
+        let stationaryPaused = backgroundStationaryPaused
+        stateLock.unlock()
         return BackgroundStatus(
             running: running,
             mode: running ? "ios" : "",
             significantChanges: defaults.bool(forKey: defaultsPrefix + "significantChanges"),
             visits: defaults.bool(forKey: defaultsPrefix + "visits"),
             geofenceCount: Double(storedRegions().values.filter { ($0["kind"] as? String) != "beacon" }.count),
-            pendingEventCount: Double(MunimLocationEvents.shared.pendingCount())
+            pendingEventCount: Double(MunimLocationEvents.shared.pendingCount()),
+            stationaryPaused: running && stationaryPaused
         )
     }
 
@@ -1120,7 +1221,9 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
                     geocoderAvailable: true,
                     mockLocationAvailable: false,
                     backgroundLocationModeEnabled: self.backgroundModeEnabled,
-                    locationPushAvailable: locationPush
+                    locationPushAvailable: locationPush,
+                    motionActivityAvailable: MunimLocationMotion.available,
+                    gnssAntennaInfoAvailable: false
                 ))
             }
         }
@@ -1174,11 +1277,15 @@ final class MunimLocationCore: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let body: [String: Any] = ["locations": locations.map { MunimLocationConvert.dict($0) }]
         if manager === backgroundManager {
-            MunimLocationEvents.shared.emit("backgroundLocation", body, persist: true)
+            if backgroundGate?.paused == true { return }
+            if let batcher = backgroundBatcher {
+                batcher.add(locations)
+            } else {
+                MunimLocationEvents.shared.emitLocations(.background, watchId: 0, locations)
+            }
         } else if manager === monitoringManager {
-            MunimLocationEvents.shared.emit("significantLocationChange", body, persist: true)
+            MunimLocationEvents.shared.emitLocations(.significantchange, watchId: 0, locations)
         }
     }
 
@@ -1394,6 +1501,13 @@ private final class WatchSession: NSObject, CLLocationManagerDelegate {
     private var delivered = 0
     private var lastDelivered: CLLocation?
     private var lastDiagnostic: String?
+    private var gate: StationaryGate?
+    private lazy var batcher = LocationBatcher(
+        size: options.batchSize,
+        intervalMs: options.batchIntervalMs
+    ) { [id = self.id] locations in
+        MunimLocationEvents.shared.emitLocations(.watch, watchId: id, locations)
+    }
 
     init(id: Int, options: WatchOptions, core: MunimLocationCore) {
         self.id = id
@@ -1425,6 +1539,32 @@ private final class WatchSession: NSObject, CLLocationManagerDelegate {
         }
         self.manager = manager
         manager.startUpdatingLocation()
+        // Live updates pause themselves while stationary (CLLocationUpdate.stationary).
+        if options.pauseWhenStationary {
+            let gate = StationaryGate(key: "watch-\(id)") { [weak self] paused in
+                self?.applyStationary(paused)
+            }
+            self.gate = gate
+            gate.start()
+        }
+    }
+
+    private func applyStationary(_ paused: Bool) {
+        guard let manager else { return }
+        if paused {
+            batcher.flush()
+            manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+            manager.distanceFilter = CLLocationDistanceMax
+            MunimLocationEvents.shared.emit("locationUpdatesPaused", ["watchId": id, "source": "motion"])
+        } else {
+            manager.desiredAccuracy = MunimLocationConvert.desiredAccuracy(options.accuracy)
+            manager.distanceFilter = options.distanceFilter > 0 ? options.distanceFilter : kCLDistanceFilterNone
+            MunimLocationEvents.shared.emit("locationUpdatesResumed", ["watchId": id, "source": "motion"])
+        }
+    }
+
+    func flush() {
+        batcher.flush()
     }
 
     @available(iOS 17.0, *)
@@ -1482,19 +1622,26 @@ private final class WatchSession: NSObject, CLLocationManagerDelegate {
     }
 
     private func deliver(_ locations: [CLLocation]) {
-        guard !locations.isEmpty else { return }
-        lastDelivered = locations.last
-        delivered += locations.count
-        MunimLocationEvents.shared.emit("location", [
-            "watchId": id,
-            "locations": locations.map { MunimLocationConvert.dict($0) },
-        ])
+        guard !locations.isEmpty, gate?.paused != true else { return }
+        var accepted = locations
+        if options.maxUpdates > 0 {
+            let remaining = Int(options.maxUpdates) - delivered
+            guard remaining > 0 else { return }
+            accepted = Array(locations.prefix(remaining))
+        }
+        lastDelivered = accepted.last
+        delivered += accepted.count
+        batcher.add(accepted)
         if options.maxUpdates > 0, delivered >= Int(options.maxUpdates) {
+            batcher.flush()
             core?.clearWatch(id)
         }
     }
 
     func stop() {
+        gate?.stop()
+        gate = nil
+        batcher.discard()
         liveTask?.cancel()
         liveTask = nil
         manager?.stopUpdatingLocation()
@@ -1520,6 +1667,62 @@ private final class WatchSession: NSObject, CLLocationManagerDelegate {
 
     func locationManagerDidResumeLocationUpdates(_ manager: CLLocationManager) {
         MunimLocationEvents.shared.emit("locationUpdatesResumed", ["watchId": id])
+    }
+}
+
+// MARK: - Delivery batching
+
+/// Buffers fixes and hands them on in batches: once `size` fixes are
+/// buffered, or `intervalMs` after the first buffered fix. With neither set
+/// every delivery passes straight through. Main thread only.
+final class LocationBatcher {
+    private let size: Int
+    private let interval: TimeInterval
+    private var buffer: [CLLocation] = []
+    private var timer: DispatchWorkItem?
+    private let output: ([CLLocation]) -> Void
+
+    init(size: Double, intervalMs: Double, output: @escaping ([CLLocation]) -> Void) {
+        self.size = size > 1 ? Int(size) : 0
+        self.interval = intervalMs > 0 ? intervalMs / 1000 : 0
+        self.output = output
+    }
+
+    var enabled: Bool { size > 0 || interval > 0 }
+
+    func add(_ locations: [CLLocation]) {
+        guard enabled else {
+            output(locations)
+            return
+        }
+        buffer.append(contentsOf: locations)
+        if size > 0, buffer.count >= size {
+            flush()
+            return
+        }
+        if interval > 0, timer == nil {
+            let item = DispatchWorkItem { [weak self] in
+                self?.timer = nil
+                self?.flush()
+            }
+            timer = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: item)
+        }
+    }
+
+    func flush() {
+        timer?.cancel()
+        timer = nil
+        guard !buffer.isEmpty else { return }
+        let batch = buffer
+        buffer.removeAll(keepingCapacity: true)
+        output(batch)
+    }
+
+    func discard() {
+        timer?.cancel()
+        timer = nil
+        buffer.removeAll()
     }
 }
 

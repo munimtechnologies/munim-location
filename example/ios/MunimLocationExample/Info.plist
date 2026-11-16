@@ -54,7 +54,7 @@
 		<string>The example needs your precise location to test full-accuracy updates.</string>
 	</dict>
 	<key>NSMotionUsageDescription</key>
-	<string>The munim-location example reads the barometer to measure altitude changes.</string>
+	<string>The munim-location example reads the barometer to measure altitude changes and motion activity to pause location updates while you stand still.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIBackgroundModes</key>

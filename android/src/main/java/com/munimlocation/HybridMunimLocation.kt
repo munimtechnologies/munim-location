@@ -30,10 +30,13 @@ import com.margelo.nitro.munimlocation.HeadingOptions
 import com.margelo.nitro.munimlocation.HybridMunimLocationSpec
 import com.margelo.nitro.munimlocation.LastKnownPositionOptions
 import com.margelo.nitro.munimlocation.Location
+import com.margelo.nitro.munimlocation.LocationBatchSource
 import com.margelo.nitro.munimlocation.LocationCapabilities
 import com.margelo.nitro.munimlocation.LocationPriority
 import com.margelo.nitro.munimlocation.LocationSettingsResult
 import com.margelo.nitro.munimlocation.MockLocation
+import com.margelo.nitro.munimlocation.MotionActivity
+import com.margelo.nitro.munimlocation.MotionPermission
 import com.margelo.nitro.munimlocation.PermissionStatus
 import com.margelo.nitro.munimlocation.ProviderStatus
 import com.margelo.nitro.munimlocation.ServiceSessionAuthorization
@@ -79,6 +82,18 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
 
   override fun clearPendingBackgroundEvents() {
     LocationEvents.clearPending(context)
+  }
+
+  override fun setLocationListener(listener: (source: LocationBatchSource, watchId: Double, locations: Array<Location>) -> Unit) {
+    LocationEvents.setLocationListener(listener)
+  }
+
+  override fun removeLocationListener() {
+    LocationEvents.removeLocationListener()
+  }
+
+  override fun flushLocations(): Promise<Unit> = promise { resolve, _ ->
+    LocationEngine.flushLocations { resolve(Unit) }
   }
 
   private fun permissionKey(status: PermissionStatus) =
@@ -284,7 +299,8 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
       significantChanges = LocationStore.getBoolean(context, LocationStore.SIGNIFICANT_RUNNING),
       visits = false,
       geofenceCount = LocationStore.geofences(context).length().toDouble(),
-      pendingEventCount = LocationEvents.pendingCount(context).toDouble()
+      pendingEventCount = LocationEvents.pendingCount(context).toDouble(),
+      stationaryPaused = running && LocationStore.getBoolean(context, LocationStore.BACKGROUND_PAUSED)
     )
   }
 
@@ -341,6 +357,33 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
   override fun startAltitudeUpdates(absolute: Boolean) = LocationSensors.startAltitude(context)
 
   override fun stopAltitudeUpdates() = LocationSensors.stopAltitude(context)
+
+  // ---------- Motion activity ----------
+
+  override fun getMotionPermission(): Promise<MotionPermission> = Promise.resolved(LocationMotion.permission(context))
+
+  override fun requestMotionPermission(): Promise<MotionPermission> =
+    promise { resolve, reject -> LocationMotion.request(context, resolve, reject) }
+
+  override fun startMotionActivityUpdates(): Promise<Unit> = promise { resolve, reject ->
+    when (LocationMotion.permission(context)) {
+      MotionPermission.UNAVAILABLE ->
+        reject(LocationException("E_UNSUPPORTED", "Motion activity needs Google Play services"))
+      MotionPermission.GRANTED -> {
+        LocationMotion.addObserver(context, "js") { activity ->
+          LocationEvents.emit("motionActivity", LocationMotion.map(activity))
+        }
+        resolve(Unit)
+      }
+      else -> reject(
+        LocationException("E_MOTION_PERMISSION_DENIED", "Motion activity needs the ACTIVITY_RECOGNITION permission")
+      )
+    }
+  }
+
+  override fun stopMotionActivityUpdates() = LocationMotion.removeObserver(context, "js")
+
+  override fun getLastMotionActivity(): Promise<MotionActivity?> = Promise.resolved(LocationMotion.last)
 
   // ---------- GNSS ----------
 
@@ -420,7 +463,9 @@ class HybridMunimLocation : HybridMunimLocationSpec() {
         backgroundLocationModeEnabled =
           LocationPermissions.declaredInManifest(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ||
             LocationPermissions.declaredInManifest(context, "android.permission.FOREGROUND_SERVICE_LOCATION"),
-        locationPushAvailable = false
+        locationPushAvailable = false,
+        motionActivityAvailable = LocationMotion.available(context),
+        gnssAntennaInfoAvailable = LocationGnss.antennaInfoAvailable(context)
       )
     )
   }

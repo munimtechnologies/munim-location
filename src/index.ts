@@ -24,11 +24,16 @@ import type {
   LastKnownPositionOptions,
   Location,
   LocationAccuracy,
+  LocationBatchSource,
   LocationCapabilities,
   LocationGranularity,
   LocationPriority,
   LocationSettingsResult,
   MockLocation,
+  MotionActivity,
+  MotionActivityType,
+  MotionConfidence,
+  MotionPermission,
   PermissionStatus,
   ProviderStatus,
   ServiceSessionAuthorization,
@@ -58,11 +63,16 @@ export type {
   LastKnownPositionOptions,
   Location,
   LocationAccuracy,
+  LocationBatchSource,
   LocationCapabilities,
   LocationGranularity,
   LocationPriority,
   LocationSettingsResult,
   MockLocation,
+  MotionActivity,
+  MotionActivityType,
+  MotionConfidence,
+  MotionPermission,
   PermissionStatus,
   ProviderStatus,
   ServiceSessionAuthorization,
@@ -277,9 +287,29 @@ export type LocationEventMap = {
     submessageId: number
     data: string
   }
+  /** Android 11+ GNSS antenna phase-centre info (`startGnssUpdates({ antennaInfo: true })`). */
+  gnssAntennaInfo: { antennas: GnssAntennaInfo[]; timestamp: number }
   serviceSessionDiagnostic: Record<string, boolean | string>
   backgroundActivitySessionDiagnostic: Record<string, boolean | string>
   locationSettingsResolved: { satisfied: boolean }
+  /** Motion activity changes (`startMotionActivityUpdates()` / `subscribeToMotionActivity()`). */
+  motionActivity: MotionActivity
+  motionActivityError: LocationErrorEvent
+}
+
+export interface GnssAntennaInfo {
+  carrierFrequencyMHz: number
+  /** Phase-centre offset from the antenna reference point, millimetres. */
+  phaseCenterOffset: {
+    x: number
+    xUncertainty: number
+    y: number
+    yUncertainty: number
+    z: number
+    zUncertainty: number
+  }
+  hasPhaseCenterVariationCorrections: boolean
+  hasSignalGainCorrections: boolean
 }
 
 export type LocationEventName = keyof LocationEventMap
@@ -287,25 +317,79 @@ export type LocationEventName = keyof LocationEventMap
 type AnyListener = (payload: unknown) => void
 
 const listeners = new Map<string, Set<AnyListener>>()
-const watchHandlers = new Map<
-  number,
-  {
-    onLocation: (location: Location) => void
-    onError?: (error: LocationError) => void
+
+interface WatchHandler {
+  onLocation?: (location: Location) => void
+  onLocations?: (locations: Location[]) => void
+  onError?: (error: LocationError) => void
+}
+
+const watchHandlers = new Map<number, WatchHandler>()
+
+function notify(name: string, payload: unknown) {
+  const set = listeners.get(name)
+  if (!set) return
+  set.forEach((listener) => {
+    try {
+      listener(payload)
+    } catch (error) {
+      console.error(`[munim-location] ${name} listener threw:`, error)
+    }
+  })
+}
+
+function deliverToWatch(watchId: number, locations: Location[]) {
+  const handler = watchHandlers.get(watchId)
+  if (!handler) return
+  try {
+    handler.onLocations?.(locations)
+    if (handler.onLocation) {
+      for (const location of locations) handler.onLocation(location)
+    }
+  } catch (error) {
+    console.error('[munim-location] location callback threw:', error)
   }
->()
+}
+
+const BATCH_EVENT_NAMES: Record<LocationBatchSource, LocationEventName> = {
+  watch: 'location',
+  background: 'backgroundLocation',
+  significantChange: 'significantLocationChange',
+}
+
+/**
+ * Typed location channel: Nitro hands the fixes over as structs, one call
+ * per native delivery (a batch when `batchSize` / `batchIntervalMs` or
+ * Android's `maxUpdateDelayMs` group them), so no JSON is built or parsed.
+ */
+function dispatchLocations(
+  source: LocationBatchSource,
+  watchId: number,
+  locations: Location[]
+) {
+  if (source === 'watch') {
+    deliverToWatch(watchId, locations)
+    if (listeners.has('location')) notify('location', { watchId, locations })
+    return
+  }
+  notify(BATCH_EVENT_NAMES[source], { locations })
+}
+
+/** Parses a JSON event payload; empty or malformed text becomes `{}`. */
+function parsePayload(text: string | undefined): unknown {
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {}
+  }
+}
 
 function dispatch(name: string, payloadText: string) {
-  let payload: unknown
-  try {
-    payload = payloadText ? JSON.parse(payloadText) : {}
-  } catch {
-    payload = {}
-  }
+  const payload = parsePayload(payloadText)
   if (name === 'location') {
     const event = payload as LocationEventMap['location']
-    const handler = watchHandlers.get(event.watchId)
-    if (handler) event.locations.forEach((location) => handler.onLocation(location))
+    deliverToWatch(event.watchId, event.locations)
   } else if (name === 'locationError') {
     const event = payload as LocationErrorEvent
     if (event.watchId !== undefined) {
@@ -316,19 +400,14 @@ function dispatch(name: string, payloadText: string) {
         )
     }
   }
-  listeners.get(name)?.forEach((listener) => {
-    try {
-      listener(payload)
-    } catch (error) {
-      console.error(`[munim-location] ${name} listener threw:`, error)
-    }
-  })
+  notify(name, payload)
 }
 
 let nativeListenerAttached = false
 function ensureNativeListener() {
   if (nativeListenerAttached) return
   nativeListenerAttached = true
+  MunimLocation.setLocationListener(dispatchLocations)
   MunimLocation.setEventListener(dispatch)
 }
 ensureNativeListener()
@@ -428,15 +507,9 @@ export function registerBackgroundHandler(handler: BackgroundHandler): () => voi
       HEADLESS_TASK_NAME,
       () => async (data: { name?: string; payload?: string; timestamp?: number }) => {
         if (!data?.name) return
-        let payload: unknown = {}
-        try {
-          payload = data.payload ? JSON.parse(data.payload) : {}
-        } catch {
-          payload = {}
-        }
         await runBackgroundHandler({
           name: data.name,
-          payload,
+          payload: parsePayload(data.payload),
           timestamp: data.timestamp ?? Date.now(),
           replayed: false,
           headless: true,
@@ -475,15 +548,11 @@ export function getPendingBackgroundEvents(): Array<{
       payload: string
       timestamp: number
     }>
-    return raw.map((event) => {
-      let payload: unknown = {}
-      try {
-        payload = JSON.parse(event.payload)
-      } catch {
-        payload = {}
-      }
-      return { name: event.name, payload, timestamp: event.timestamp }
-    })
+    return raw.map((event) => ({
+      name: event.name,
+      payload: parsePayload(event.payload),
+      timestamp: event.timestamp,
+    }))
   } catch {
     return []
   }
@@ -727,20 +796,28 @@ const DEFAULT_WATCH: WatchOptions = {
   useLiveUpdates: false,
   allowsBackgroundLocationUpdates: false,
   showsBackgroundLocationIndicator: true,
+  batchSize: 0,
+  batchIntervalMs: 0,
+  pauseWhenStationary: false,
+}
+
+function startWatch(handler: WatchHandler, options: Partial<WatchOptions>): number {
+  ensureNativeListener()
+  const id = MunimLocation.watchPosition({ ...DEFAULT_WATCH, ...options })
+  watchHandlers.set(id, handler)
+  return id
 }
 
 /**
  * Continuous updates. Returns a watch id for `clearWatch()`.
+ * `onLocation` runs once per fix, also when the fixes arrived as a batch.
  */
 export function watchPosition(
   onLocation: (location: Location) => void,
   onError?: (error: LocationError) => void,
   options: Partial<WatchOptions> = {}
 ): number {
-  ensureNativeListener()
-  const id = MunimLocation.watchPosition({ ...DEFAULT_WATCH, ...options })
-  watchHandlers.set(id, { onLocation, onError })
-  return id
+  return startWatch({ onLocation, onError }, options)
 }
 
 export function clearWatch(watchId: number): void {
@@ -769,9 +846,45 @@ export function subscribeToPosition(
   }
 }
 
+/**
+ * Battery-friendly continuous updates: the native side buffers fixes and
+ * wakes JavaScript once per batch, when `batchSize` fixes are buffered or
+ * `batchIntervalMs` passed since the first one (defaults: 10 fixes / 30 s).
+ * `onLocations` gets every fix of the batch, oldest first. On Android, set
+ * `maxUpdateDelayMs` as well to let the GNSS chip batch while the CPU sleeps.
+ */
+export function subscribeToPositionBatches(
+  onLocations: (locations: Location[]) => void,
+  options: Partial<WatchOptions> = {},
+  onError?: (error: LocationError) => void
+): LocationSubscription & { watchId: number } {
+  const watchId = startWatch(
+    { onLocations, onError },
+    { batchSize: 10, batchIntervalMs: 30000, ...options }
+  )
+  let removed = false
+  return {
+    watchId,
+    remove: () => {
+      if (removed) return
+      removed = true
+      clearWatch(watchId)
+    },
+  }
+}
+
 export function clearAllWatches(): void {
   watchHandlers.clear()
   MunimLocation.clearAllWatches()
+}
+
+/**
+ * Delivers fixes buffered by `batchSize` / `batchIntervalMs` right away (for
+ * example before the app goes to the background). Android also flushes
+ * Fused Location Provider batches (`maxUpdateDelayMs`).
+ */
+export function flushLocations(): Promise<void> {
+  return call(() => MunimLocation.flushLocations())
 }
 
 // ========== Background ==========
@@ -1023,12 +1136,79 @@ export function startGnssUpdates(options: Partial<GnssOptions> = {}): Promise<vo
       nmea: options.nmea ?? false,
       measurements: options.measurements ?? false,
       navigationMessages: options.navigationMessages ?? false,
+      antennaInfo: options.antennaInfo ?? false,
     })
   )
 }
 
 export function stopGnssUpdates(): void {
   MunimLocation.stopGnssUpdates()
+}
+
+// ========== Motion activity ==========
+
+/** Motion & Fitness (iOS) / ACTIVITY_RECOGNITION (Android 10+) permission. */
+export function getMotionPermission(): Promise<MotionPermission> {
+  return call(() => MunimLocation.getMotionPermission())
+}
+
+/**
+ * iOS shows the Motion & Fitness prompt (needs NSMotionUsageDescription);
+ * Android 10+ asks for ACTIVITY_RECOGNITION (declare it in the manifest, or
+ * set `isAndroidActivityRecognitionEnabled` in the Expo plugin).
+ */
+export function requestMotionPermission(): Promise<MotionPermission> {
+  return call(() => MunimLocation.requestMotionPermission())
+}
+
+/**
+ * `motionActivity` events: iOS CMMotionActivityManager (every change, with a
+ * confidence), Android Activity Recognition transitions (on each confident
+ * transition; nothing is reported until the first one). Prefer
+ * `subscribeToMotionActivity()`, which also stops the updates.
+ */
+export function startMotionActivityUpdates(): Promise<void> {
+  ensureNativeListener()
+  return call(() => MunimLocation.startMotionActivityUpdates())
+}
+
+export function stopMotionActivityUpdates(): void {
+  MunimLocation.stopMotionActivityUpdates()
+}
+
+/** The most recent activity seen by this process, or `undefined`. */
+export function getLastMotionActivity(): Promise<MotionActivity | undefined> {
+  return call(() => MunimLocation.getLastMotionActivity())
+}
+
+let motionSubscribers = 0
+
+/**
+ * Motion activity changes with a subscription handle. Updates run while at
+ * least one subscription is active. Failures (no permission, no hardware)
+ * reach `onError`.
+ */
+export function subscribeToMotionActivity(
+  onActivity: (activity: MotionActivity) => void,
+  onError?: (error: LocationError) => void
+): LocationSubscription {
+  const unsubscribe = addEventListener('motionActivity', onActivity)
+  const unsubscribeError = addEventListener('motionActivityError', (event) =>
+    onError?.(new LocationError(event.code as LocationErrorCode, event.message))
+  )
+  motionSubscribers += 1
+  startMotionActivityUpdates().catch((error: LocationError) => onError?.(error))
+  let removed = false
+  return {
+    remove: () => {
+      if (removed) return
+      removed = true
+      unsubscribe()
+      unsubscribeError()
+      motionSubscribers = Math.max(0, motionSubscribers - 1)
+      if (motionSubscribers === 0) stopMotionActivityUpdates()
+    },
+  }
 }
 
 // ========== Geocoding ==========
@@ -1275,8 +1455,10 @@ export default {
   getLastKnownPosition,
   watchPosition,
   subscribeToPosition,
+  subscribeToPositionBatches,
   clearWatch,
   clearAllWatches,
+  flushLocations,
   startBackgroundUpdates,
   stopBackgroundUpdates,
   startSignificantLocationChanges,
@@ -1305,6 +1487,12 @@ export default {
   getGnssInfo,
   startGnssUpdates,
   stopGnssUpdates,
+  getMotionPermission,
+  requestMotionPermission,
+  startMotionActivityUpdates,
+  stopMotionActivityUpdates,
+  getLastMotionActivity,
+  subscribeToMotionActivity,
   isGeocoderAvailable,
   geocode,
   reverseGeocode,

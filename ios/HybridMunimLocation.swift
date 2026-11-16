@@ -55,6 +55,20 @@ final class HybridMunimLocation: HybridMunimLocationSpec {
         MunimLocationEvents.shared.clearPending()
     }
 
+    func setLocationListener(
+        listener: @escaping (_ source: LocationBatchSource, _ watchId: Double, _ locations: [Location]) -> Void
+    ) throws {
+        MunimLocationEvents.shared.setLocationListener(listener)
+    }
+
+    func removeLocationListener() throws {
+        MunimLocationEvents.shared.removeLocationListener()
+    }
+
+    func flushLocations() throws -> Promise<Void> {
+        Self.resolved { completion in core.flushLocations { completion(()) } }
+    }
+
     // MARK: - Permissions
 
     func getPermissionStatus() throws -> Promise<PermissionStatus> {
@@ -277,6 +291,28 @@ final class HybridMunimLocation: HybridMunimLocationSpec {
 
     func stopAltitudeUpdates() throws {
         core.stopAltitude()
+    }
+
+    // MARK: - Motion activity
+
+    func getMotionPermission() throws -> Promise<MotionPermission> {
+        Promise.resolved(withResult: MunimLocationMotion.permission())
+    }
+
+    func requestMotionPermission() throws -> Promise<MotionPermission> {
+        Self.resolved { MunimLocationMotion.shared.requestPermission($0) }
+    }
+
+    func startMotionActivityUpdates() throws -> Promise<Void> {
+        Self.promise { core.startMotionUpdates($0) }
+    }
+
+    func stopMotionActivityUpdates() throws {
+        core.stopMotionUpdates()
+    }
+
+    func getLastMotionActivity() throws -> Promise<MotionActivity?> {
+        Self.resolved { core.lastMotionActivity($0) }
     }
 
     // MARK: - GNSS (Android only)

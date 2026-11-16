@@ -38,6 +38,9 @@ const LOGGED_EVENTS: Location.LocationEventName[] = [
   'serviceSessionDiagnostic',
   'backgroundActivitySessionDiagnostic',
   'locationSettingsResolved',
+  'motionActivity',
+  'motionActivityError',
+  'gnssAntennaInfo',
 ]
 
 type Tab =
@@ -47,6 +50,7 @@ type Tab =
   | 'Background'
   | 'Regions'
   | 'Heading'
+  | 'Motion'
   | 'GNSS'
   | 'Geocode'
 
@@ -57,6 +61,7 @@ const TABS: Tab[] = [
   'Background',
   'Regions',
   'Heading',
+  'Motion',
   'GNSS',
   'Geocode',
 ]
@@ -204,6 +209,32 @@ function PositionScreen() {
     [],
   )
 
+  const batches = useRef<(Location.LocationSubscription & { watchId: number }) | null>(null)
+  const [batchStats, setBatchStats] = useState({ wakeups: 0, fixes: 0, last: 0 })
+
+  useEffect(() => () => batches.current?.remove(), [])
+
+  const startBatches = () => {
+    batches.current?.remove()
+    setBatchStats({ wakeups: 0, fixes: 0, last: 0 })
+    // One JS wake-up per 5 fixes (or per 15 s), instead of one per fix.
+    batches.current = Location.subscribeToPositionBatches(
+      locations => {
+        setBatchStats(stats => ({
+          wakeups: stats.wakeups + 1,
+          fixes: stats.fixes + locations.length,
+          last: locations.length,
+        }))
+        const newest = locations[locations.length - 1]
+        if (newest) setLast(newest)
+        log('location batch', { size: locations.length, first: locations[0]?.timestamp, last: newest?.timestamp })
+      },
+      { intervalMs: 1000, batchSize: 5, batchIntervalMs: 15000 },
+      error => log('batch error', `${error.code}: ${error.message}`),
+    )
+    log('subscribeToPositionBatches', { watchId: batches.current.watchId })
+  }
+
   const startWatch = (options: Partial<Location.WatchOptions>, label: string) => {
     if (watchId.current !== null) Location.clearWatch(watchId.current)
     watchId.current = Location.watchPosition(
@@ -242,6 +273,10 @@ function PositionScreen() {
           />
           <Button title="Live updates" onPress={() => startWatch({ useLiveUpdates: true, activityType: 'fitness' }, 'live')} />
           <Button
+            title="Pause when still"
+            onPress={() => startWatch({ distanceFilter: 5, pauseWhenStationary: true }, 'pause when still')}
+          />
+          <Button
             title="Stop watch"
             onPress={() => {
               if (watchId.current !== null) Location.clearWatch(watchId.current)
@@ -265,6 +300,26 @@ function PositionScreen() {
             {last.isMock ? ' · mock' : ''}
           </Text>
         )}
+      </Section>
+      <Section title="Native batching">
+        <Text style={styles.note}>
+          Fixes are buffered natively and handed to JavaScript as typed structs, 5 at a time or every 15 s.
+        </Text>
+        <Row>
+          <Button title="Start batches" onPress={startBatches} />
+          <Button title="Flush now" onPress={() => attempt('flushLocations', Location.flushLocations)} />
+          <Button
+            title="Stop batches"
+            onPress={() => {
+              batches.current?.remove()
+              batches.current = null
+              log('batches removed')
+            }}
+          />
+        </Row>
+        <Text style={styles.mono}>
+          {batchStats.fixes} fixes in {batchStats.wakeups} JS wake-ups (last batch {batchStats.last})
+        </Text>
       </Section>
       {Platform.OS === 'android' && (
         <Section title="Mock location (Android dev builds)">
@@ -298,6 +353,20 @@ function BackgroundScreen() {
               Location.startBackgroundUpdates({
                 distanceFilter: 25,
                 android: { restartOnBoot: true, notificationTitle: 'munim-location example' },
+              }),
+            )
+          }
+        />
+        <Button
+          title="Background batched + pause when still"
+          onPress={() =>
+            attempt('startBackgroundUpdates batched', () =>
+              Location.startBackgroundUpdates({
+                distanceFilter: 10,
+                batchSize: 10,
+                batchIntervalMs: 60000,
+                pauseWhenStationary: true,
+                android: { notificationTitle: 'munim-location example (batched)' },
               }),
             )
           }
@@ -433,6 +502,49 @@ function HeadingScreen() {
   )
 }
 
+function MotionScreen() {
+  const [activity, setActivity] = useState<Location.MotionActivity | null>(null)
+  const subscription = useRef<Location.LocationSubscription | null>(null)
+  useEffect(() => () => subscription.current?.remove(), [])
+  return (
+    <Section title="Motion activity">
+      <Text style={styles.note}>
+        iOS: CMMotionActivityManager (every change, with confidence). Android: Activity Recognition
+        transitions (reported on the next confident transition).
+      </Text>
+      <Row>
+        <Button title="Permission" onPress={() => attempt('getMotionPermission', Location.getMotionPermission)} />
+        <Button title="Request" onPress={() => attempt('requestMotionPermission', Location.requestMotionPermission)} />
+        <Button
+          title="Subscribe"
+          onPress={() => {
+            subscription.current?.remove()
+            subscription.current = Location.subscribeToMotionActivity(
+              next => setActivity(next),
+              error => log('motion error', `${error.code}: ${error.message}`),
+            )
+            log('subscribeToMotionActivity')
+          }}
+        />
+        <Button
+          title="Unsubscribe"
+          onPress={() => {
+            subscription.current?.remove()
+            subscription.current = null
+            log('motion unsubscribed')
+          }}
+        />
+        <Button title="Last" onPress={() => attempt('getLastMotionActivity', Location.getLastMotionActivity)} />
+      </Row>
+      {activity && (
+        <Text style={styles.big}>
+          {activity.type} ({activity.confidence}) since {new Date(activity.timestamp).toLocaleTimeString()}
+        </Text>
+      )}
+    </Section>
+  )
+}
+
 function GnssScreen() {
   const [status, setStatus] = useState<Location.LocationEventMap['gnssStatus'] | null>(null)
   useEffect(() => Location.addEventListener('gnssStatus', setStatus), [])
@@ -448,6 +560,10 @@ function GnssScreen() {
               Location.startGnssUpdates({ nmea: false, measurements: true, navigationMessages: true }),
             )
           }
+        />
+        <Button
+          title="+ Antenna info"
+          onPress={() => attempt('startGnssUpdates antenna', () => Location.startGnssUpdates({ antennaInfo: true }))}
         />
         <Button title="Stop" onPress={() => attempt('stopGnssUpdates', Location.stopGnssUpdates)} />
       </Row>
@@ -591,6 +707,7 @@ export default function App() {
           {tab === 'Background' && <BackgroundScreen />}
           {tab === 'Regions' && <RegionsScreen />}
           {tab === 'Heading' && <HeadingScreen />}
+          {tab === 'Motion' && <MotionScreen />}
           {tab === 'GNSS' && <GnssScreen />}
           {tab === 'Geocode' && <GeocodeScreen />}
         </ScrollView>

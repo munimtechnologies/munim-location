@@ -3,6 +3,7 @@ package com.munimlocation
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.GnssAntennaInfo
 import android.location.GnssMeasurementsEvent
 import android.location.GnssNavigationMessage
 import android.location.GnssStatus
@@ -22,6 +23,7 @@ object LocationGnss {
   private var nmeaListener: OnNmeaMessageListener? = null
   private var measurementsCallback: GnssMeasurementsEvent.Callback? = null
   private var navigationCallback: GnssNavigationMessage.Callback? = null
+  private var antennaListener: Any? = null
   private var engineListener: LocationListenerCompat? = null
 
   fun hasGps(context: Context): Boolean =
@@ -97,6 +99,9 @@ object LocationGnss {
     if (!hasGps(context)) throw LocationException("E_UNSUPPORTED", "This device has no GNSS receiver")
     if (!LocationPermissions.hasFine(context)) {
       throw LocationException("E_LOCATION_PERMISSION_DENIED", "GNSS data needs ACCESS_FINE_LOCATION")
+    }
+    if (options.antennaInfo && Build.VERSION.SDK_INT < 30) {
+      throw LocationException("E_UNSUPPORTED", "GNSS antenna info needs Android 11")
     }
     stop(context)
     val manager = LocationEngine.locationManager(context)
@@ -247,6 +252,52 @@ object LocationGnss {
       }
       navigationCallback = callback
     }
+
+    if (options.antennaInfo && Build.VERSION.SDK_INT >= 30) {
+      val listener = GnssAntennaInfo.Listener { antennas ->
+        LocationEvents.emit(
+          "gnssAntennaInfo",
+          mapOf(
+            "antennas" to antennas.map { antenna ->
+              val offset = antenna.phaseCenterOffset
+              mapOf(
+                "carrierFrequencyMHz" to antenna.carrierFrequencyMHz,
+                "phaseCenterOffset" to mapOf(
+                  "x" to offset.xOffsetMm,
+                  "xUncertainty" to offset.xOffsetUncertaintyMm,
+                  "y" to offset.yOffsetMm,
+                  "yUncertainty" to offset.yOffsetUncertaintyMm,
+                  "z" to offset.zOffsetMm,
+                  "zUncertainty" to offset.zOffsetUncertaintyMm
+                ),
+                "hasPhaseCenterVariationCorrections" to (antenna.phaseCenterVariationCorrections != null),
+                "hasSignalGainCorrections" to (antenna.signalGainCorrections != null)
+              )
+            },
+            "timestamp" to System.currentTimeMillis().toDouble()
+          )
+        )
+      }
+      if (!manager.registerAntennaInfoListener(LocationEngine.executor, listener)) {
+        stop(context)
+        throw LocationException("E_UNSUPPORTED", "This GNSS chipset does not report antenna info")
+      }
+      antennaListener = listener
+    }
+  }
+
+  /** Android 11+: the chipset reports antenna info. */
+  fun antennaInfoAvailable(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 30 || !hasGps(context)) return false
+    return capability {
+      val caps = LocationEngine.locationManager(context).gnssCapabilities
+      if (Build.VERSION.SDK_INT >= 31) {
+        caps.hasAntennaInfo()
+      } else {
+        @Suppress("DEPRECATION")
+        caps.hasGnssAntennaInfo()
+      }
+    }
   }
 
   fun stop(context: Context) {
@@ -255,6 +306,10 @@ object LocationGnss {
     nmeaListener?.let { manager.removeNmeaListener(it) }
     measurementsCallback?.let { manager.unregisterGnssMeasurementsCallback(it) }
     navigationCallback?.let { manager.unregisterGnssNavigationMessageCallback(it) }
+    if (Build.VERSION.SDK_INT >= 30) {
+      (antennaListener as? GnssAntennaInfo.Listener)?.let { manager.unregisterAntennaInfoListener(it) }
+    }
+    antennaListener = null
     engineListener?.let { LocationManagerCompat.removeUpdates(manager, it) }
     engineListener = null
     statusCallback = null
