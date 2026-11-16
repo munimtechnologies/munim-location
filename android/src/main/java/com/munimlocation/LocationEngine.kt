@@ -61,6 +61,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Process-wide location engine shared by the Nitro object, the foreground
@@ -214,24 +215,32 @@ object LocationEngine {
   // ---------- Positions ----------
 
   /**
-   * How long a low-power one-shot request may look before it is asked again
-   * at balanced power: half its time budget, between 1 s and 10 s.
+   * How long a low-power or balanced fused request looks alone before the
+   * fallback is asked as well: a third of its budget, between 1 s and 5 s.
    */
-  private fun lowPowerGraceMs(budgetMs: Long): Long =
-    (budgetMs / 2).coerceIn(1_000L, 10_000L).coerceAtMost(budgetMs)
+  private fun fallbackGraceMs(budgetMs: Long): Long = (budgetMs / 3).coerceIn(1_000L, 5_000L)
 
   /**
    * One fused `getCurrentLocation`. [onResult] or [onError] runs at most
    * once, on the engine thread; the returned function cancels the request.
    *
-   * PRIORITY_LOW_POWER only uses sources that cost almost nothing: cell
-   * towers and Wi-Fi scans the system or other apps already made. A Wi-Fi-only
-   * phone (no SIM) has no cell towers and, lying still, few fresh scans, so
-   * a low-power request can look for its whole duration and return null
-   * (Accuracy.Low / Lowest on a Galaxy A14 without a SIM never got a fix).
-   * When a low-power request has nothing after [lowPowerGraceMs], it is
-   * asked once more at balanced power for the rest of the budget: one
-   * Wi-Fi / cell lookup, never GNSS, and only when low power found nothing.
+   * Low-power and balanced requests (Accuracy.Lowest / Low / Balanced,
+   * reduced) do not turn on GNSS, and Play services holds such one-shot
+   * requests back while the device lies still ("stationary throttling"):
+   * low power only uses cell towers and Wi-Fi scans that were already made,
+   * and even a balanced request may answer only at the end of its duration,
+   * or not at all. On a Wi-Fi-only Galaxy A14 (no SIM) a Low request never
+   * got a fix, and Balanced came back empty after 5, 15 and 30 s or just
+   * before a 15 s timeout.
+   *
+   * So when such a request has no fix after [fallbackGraceMs] (or ends empty
+   * sooner), the platform network provider is asked once as well: Wi-Fi /
+   * cell positioning, never GNSS, and not subject to that throttling (it may
+   * answer with a recent fix it already has, seen up to 15 s old). The fused request
+   * keeps running; the first fix wins. With coarse
+   * granularity the fix must come from the fused provider (which coarsens
+   * it), so a low-power request asks it again at balanced power instead and
+   * a balanced one has no fallback.
    */
   private fun fusedCurrentLocation(
     context: Context,
@@ -244,8 +253,8 @@ object LocationEngine {
   ): () -> Unit {
     val settled = AtomicBoolean(false)
     val cancelled = AtomicBoolean(false)
-    val escalated = AtomicBoolean(false)
     val tokens = CopyOnWriteArrayList<CancellationTokenSource>()
+    val signals = CopyOnWriteArrayList<android.os.CancellationSignal>()
     val settle: (android.location.Location?, Throwable?) -> Unit = { location, error ->
       if (!cancelled.get() && settled.compareAndSet(false, true)) {
         if (error != null) onError(error) else onResult(location)
@@ -262,36 +271,83 @@ object LocationEngine {
         .build()
       fused(context).getCurrentLocation(built, token.token)
     }
+    val cancel: () -> Unit = {
+      cancelled.set(true)
+      tokens.forEach { it.cancel() }
+      signals.forEach { it.cancel() }
+    }
 
-    val graceMs = lowPowerGraceMs(durationMs)
-    if (priority != Priority.PRIORITY_LOW_POWER || graceMs >= durationMs) {
+    val coarse = granularity == Granularity.GRANULARITY_COARSE
+    val hasFallback = priority == Priority.PRIORITY_LOW_POWER ||
+      (priority == Priority.PRIORITY_BALANCED_POWER_ACCURACY && !coarse)
+    val graceMs = fallbackGraceMs(durationMs)
+    if (!hasFallback || graceMs >= durationMs) {
       request(priority, durationMs)
         .addOnSuccessListener(executor) { settle(it, null) }
         .addOnFailureListener(executor) { settle(null, it) }
-      return { cancelled.set(true); tokens.forEach { it.cancel() } }
+      return cancel
     }
 
-    val escalate: () -> Unit = escalate@{
-      if (cancelled.get() || settled.get() || !escalated.compareAndSet(false, true)) return@escalate
-      tokens.forEach { it.cancel() }
-      Log.d(TAG, "low-power request found no fix in $graceMs ms; asking at balanced power")
-      request(Priority.PRIORITY_BALANCED_POWER_ACCURACY, durationMs - graceMs)
-        .addOnSuccessListener(executor) { settle(it, null) }
-        .addOnFailureListener(executor) { settle(null, it) }
+    // Two attempts (the fused request and the fallback); null or the first
+    // error once both came back empty.
+    val pending = AtomicInteger(2)
+    val firstError = AtomicReference<Throwable?>(null)
+    val missed: (Throwable?) -> Unit = { error ->
+      if (error != null) firstError.compareAndSet(null, error)
+      if (pending.decrementAndGet() == 0) settle(null, firstError.get())
     }
-    val timer = Runnable { escalate() }
-    request(priority, graceMs)
-      .addOnSuccessListener(executor) { location ->
-        // Any fix wins, even one that lands after the balanced retry started.
-        if (location != null) settle(location, null) else escalate()
+    val fallbackStarted = AtomicBoolean(false)
+    val startedAt = SystemClock.elapsedRealtime()
+    val fallback: () -> Unit = fallback@{
+      if (cancelled.get() || settled.get() || !fallbackStarted.compareAndSet(false, true)) return@fallback
+      val manager = locationManager(context)
+      val network = !coarse &&
+        runCatching { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)
+      val lowPower = priority == Priority.PRIORITY_LOW_POWER
+      Log.d(
+        TAG,
+        "${if (lowPower) "low-power" else "balanced"} request has no fix after " +
+          "${SystemClock.elapsedRealtime() - startedAt} ms; " +
+          if (network) "asking the network provider" else if (lowPower) "asking fused at balanced power" else "no fallback"
+      )
+      if (network) {
+        val signal = android.os.CancellationSignal()
+        signals.add(signal)
+        try {
+          LocationManagerCompat.getCurrentLocation(manager, LocationManager.NETWORK_PROVIDER, signal, executor) { location ->
+            Log.d(TAG, "network provider: ${if (location == null) "no fix" else "fix, ${ageMs(location).toLong()} ms old"} after ${SystemClock.elapsedRealtime() - startedAt} ms")
+            if (location != null) settle(location, null) else missed(null)
+          }
+        } catch (error: Throwable) {
+          missed(error)
+        }
+      } else if (lowPower) {
+        val remaining = durationMs - (SystemClock.elapsedRealtime() - startedAt)
+        request(Priority.PRIORITY_BALANCED_POWER_ACCURACY, remaining)
+          .addOnSuccessListener(executor) { if (it != null) settle(it, null) else missed(null) }
+          .addOnFailureListener(executor) { missed(it) }
+      } else {
+        missed(null)
       }
-      // After escalating, the balanced request decides the outcome.
-      .addOnFailureListener(executor) { error -> if (!escalated.get()) settle(null, error) }
+    }
+    val timer = Runnable { fallback() }
+    request(priority, durationMs)
+      .addOnSuccessListener(executor) { location ->
+        if (location != null) {
+          settle(location, null)
+        } else {
+          fallback()
+          missed(null)
+        }
+      }
+      .addOnFailureListener(executor) { error ->
+        fallback()
+        missed(error)
+      }
     handler.postDelayed(timer, graceMs)
     return {
-      cancelled.set(true)
       handler.removeCallbacks(timer)
-      tokens.forEach { it.cancel() }
+      cancel()
     }
   }
 
