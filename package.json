@@ -9,11 +9,14 @@
   "source": "src/index",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --no-eslintrc -c example/.eslintrc.js --ext .ts,.tsx,.js src example/App.tsx example/index.js example/src app.plugin.js",
+    "typecheck:example": "tsc --noEmit -p example/tsconfig.json",
+    "lint": "eslint src test example/App.tsx example/index.js example/src app.plugin.js eslint.config.js scripts",
+    "test": "jest",
     "clean": "git clean -dfX",
     "release": "semantic-release",
     "build": "npm run typecheck && bob build",
     "codegen": "nitrogen --logLevel=\"debug\" && node scripts/patch-nitro-optionals.js && npm run build && node post-script.js",
+    "bench:delivery": "node scripts/bench-delivery.mjs",
     "release:local": "node scripts/release-local.mjs"
   },
   "keywords": [
@@ -97,19 +100,28 @@
     }
   },
   "devDependencies": {
-    "@react-native/gradle-plugin": "^0.88.0",
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@types/jest": "^29.5.14",
+    "@eslint/js": "^10.0.1",
+    "@expo/config-plugins": "^58.0.13",
+    "@react-native/gradle-plugin": "^0.88.1",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
+    "@types/jest": "^30.0.0",
     "@types/react": "^19.3.0",
-    "conventional-changelog-conventionalcommits": "^9.3.1",
-    "nitrogen": "0.37.1",
-    "react": "19.3.0",
-    "react-native": "0.88.0",
-    "react-native-builder-bob": "^0.43.1",
-    "react-native-nitro-modules": "0.37.1",
-    "semantic-release": "^25.0.9",
-    "typescript": "^5.8.3"
+    "conventional-changelog-conventionalcommits": "^10.4.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "jest": "^30.5.2",
+    "nitrogen": "0.37.2",
+    "prettier": "^3.10.1",
+    "react": "19.3.1",
+    "react-native": "0.88.1",
+    "react-native-builder-bob": "^0.44.1",
+    "react-native-nitro-modules": "0.37.2",
+    "semantic-release": "^26.0.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2"
   },
   "peerDependencies": {
     "react": "*",
@@ -131,32 +143,6 @@
       "npm": "npm:@semantic-release/error@4.0.0"
     }
   },
-  "eslintConfig": {
-    "root": true,
-    "extends": [
-      "@react-native",
-      "prettier"
-    ],
-    "plugins": [
-      "prettier"
-    ],
-    "rules": {
-      "prettier/prettier": [
-        "warn",
-        {
-          "quoteProps": "consistent",
-          "singleQuote": true,
-          "tabWidth": 2,
-          "trailingComma": "es5",
-          "useTabs": false
-        }
-      ]
-    }
-  },
-  "eslintIgnore": [
-    "node_modules/",
-    "lib/"
-  ],
   "prettier": {
     "quoteProps": "consistent",
     "singleQuote": true,
@@ -177,6 +163,12 @@
           "project": "tsconfig.json"
         }
       ]
+    ]
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/test"
     ]
   }
 }
