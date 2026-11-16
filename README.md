@@ -717,7 +717,7 @@ Continuous updates; returns a watch id.
 
 **Options** (all optional): `accuracy`, `priority`, `granularity`, `distanceFilter` (metres), `intervalMs` (default `5000`), `fastestIntervalMs`, `maxUpdateDelayMs` (Android batching), `minUpdateAgeMs`, `maxUpdates`, `waitForAccurateLocation` (Android), `activityType` (`other` | `automotiveNavigation` | `fitness` | `otherNavigation` | `airborne` | `maritime`; iOS, `maritime` needs iOS 27), `pausesLocationUpdatesAutomatically` (iOS), `useLiveUpdates` (iOS 17+ `CLLocationUpdate.liveUpdates`), `allowsBackgroundLocationUpdates` and `showsBackgroundLocationIndicator` (iOS), `batchSize` / `batchIntervalMs` (native delivery batching, both platforms; default `0` = every fix right away), `pauseWhenStationary` (both platforms, default `false`; see [Battery-friendly tracking](#battery-friendly-tracking)).
 
-`onLocation` runs once per fix, also when fixes arrive as a batch.
+`onLocation` runs once per fix, also when fixes arrive as a batch. `distanceFilter` always lets the first fix through, then only fixes at least that far from the last delivered one (Android applies it in the library rather than with `setMinUpdateDistanceMeters`, which can withhold every fix from a device that does not move).
 
 #### `subscribeToPosition(onLocation, options?, onError?)`
 

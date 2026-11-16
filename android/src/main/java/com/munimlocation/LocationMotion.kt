@@ -219,6 +219,62 @@ object LocationMotion {
   }
 }
 
+/**
+ * `distanceFilter`, applied to delivered fixes: the first fix always passes,
+ * later ones once they are at least `minDistance` metres from the last one
+ * that passed. LocationRequest.setMinUpdateDistanceMeters is not used: the
+ * Fused Location Provider can withhold even the first fix from a device that
+ * does not move, so a new subscriber indoors never heard anything. Filtering
+ * here costs no extra GNSS work (the provider computes fixes at the
+ * interval either way). Not thread-safe; each owner calls it on one thread.
+ */
+class DistanceFilter(private val minDistance: Double) {
+  private var last: android.location.Location? = null
+
+  fun filter(locations: List<android.location.Location>): List<android.location.Location> {
+    if (minDistance <= 0 || locations.isEmpty()) return locations
+    val accepted = ArrayList<android.location.Location>(locations.size)
+    for (location in locations) {
+      val previous = last
+      if (previous == null || previous.distanceTo(location) >= minDistance) {
+        accepted.add(location)
+        last = location
+      }
+    }
+    return accepted
+  }
+
+  companion object {
+    /**
+     * PendingIntent background delivery: each broadcast may run in a fresh
+     * process, so the last delivered position lives in LocationStore.
+     */
+    fun filterPersisted(
+      context: Context,
+      locations: List<android.location.Location>
+    ): List<android.location.Location> {
+      val minDistance = LocationStore.backgroundOptions(context)?.optDouble("distanceFilter", 0.0) ?: 0.0
+      if (minDistance <= 0 || locations.isEmpty()) return locations
+      val filter = DistanceFilter(minDistance)
+      LocationStore.getString(context, LocationStore.BACKGROUND_LAST_DELIVERED)?.split(",")?.let { parts ->
+        val latitude = parts.getOrNull(0)?.toDoubleOrNull()
+        val longitude = parts.getOrNull(1)?.toDoubleOrNull()
+        if (latitude != null && longitude != null) {
+          filter.last = android.location.Location("munim-location").apply {
+            this.latitude = latitude
+            this.longitude = longitude
+          }
+        }
+      }
+      val accepted = filter.filter(locations)
+      accepted.lastOrNull()?.let {
+        LocationStore.setString(context, LocationStore.BACKGROUND_LAST_DELIVERED, "${it.latitude},${it.longitude}")
+      }
+      return accepted
+    }
+  }
+}
+
 /** Pauses a location session while the device is still (`pauseWhenStationary`). */
 class StationaryGate(
   private val context: Context,

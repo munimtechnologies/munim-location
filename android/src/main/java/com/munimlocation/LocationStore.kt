@@ -31,6 +31,8 @@ object LocationStore {
   const val BACKGROUND_OPTIONS = "background.options"
   /** Background updates are in their `pauseWhenStationary` low-power state. */
   const val BACKGROUND_PAUSED = "background.paused"
+  /** `lat,lon` of the last PendingIntent background fix delivered (distanceFilter). */
+  const val BACKGROUND_LAST_DELIVERED = "background.lastDelivered"
   const val SIGNIFICANT_RUNNING = "significant.running"
   const val ASKED_FOREGROUND = "asked.foreground"
   const val ASKED_BACKGROUND = "asked.background"

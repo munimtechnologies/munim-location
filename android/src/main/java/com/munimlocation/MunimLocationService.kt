@@ -89,11 +89,12 @@ class MunimLocationService : Service() {
       LocationEngine.handler
     ) { LocationEvents.deliverBackgroundLocations(context, LocationBatchSource.BACKGROUND, it) }
     batcher = locationBatcher
+    val distance = DistanceFilter(options.optDouble("distanceFilter", 0.0))
     if (LocationEngine.playServicesAvailable(this)) {
       val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
           if (gate?.paused == true) return
-          locationBatcher.add(result.locations)
+          locationBatcher.add(distance.filter(result.locations))
         }
       }
       callback = locationCallback
@@ -126,11 +127,9 @@ class MunimLocationService : Service() {
       val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
       val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
         .firstOrNull { manager.isProviderEnabled(it) } ?: return
-      val compatListener = LocationListenerCompat { location -> locationBatcher.add(listOf(location)) }
+      val compatListener = LocationListenerCompat { location -> locationBatcher.add(distance.filter(listOf(location))) }
       listener = compatListener
-      val request = LocationRequestCompat.Builder(options.optDouble("intervalMs", 10_000.0).toLong())
-        .setMinUpdateDistanceMeters(options.optDouble("distanceFilter", 0.0).toFloat())
-        .build()
+      val request = LocationRequestCompat.Builder(options.optDouble("intervalMs", 10_000.0).toLong()).build()
       LocationManagerCompat.requestLocationUpdates(manager, provider, request, LocationEngine.executor, compatListener)
     }
   }

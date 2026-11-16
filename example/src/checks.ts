@@ -297,11 +297,14 @@ export async function runChecks(
       location => locations.push(location),
       { accuracy: Location.Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
     )
-    // This check is about remove(); a balanced (Wi-Fi / cell) first fix can
-    // take longer than 5 s indoors, so wait for it (up to 20 s).
-    await sleep(5000)
-    while (locations.length === 0 && Date.now() - started < 20000) await sleep(500)
-    const firstFixMs = locations.length > 0 ? Date.now() - started : undefined
+    // This check is about remove(); wait for the first fix (up to 20 s),
+    // then let updates run for the rest of 5 s before removing.
+    let firstFixMs: number | undefined
+    while (Date.now() - started < 20000) {
+      if (firstFixMs === undefined && locations.length > 0) firstFixMs = Date.now() - started
+      if (firstFixMs !== undefined && Date.now() - started >= 5000) break
+      await sleep(100)
+    }
     subscription.remove()
     subscription.remove()
     const count = locations.length

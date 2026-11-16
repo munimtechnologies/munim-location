@@ -42,7 +42,12 @@ class MunimLocationReceiver : BroadcastReceiver() {
       }
       else -> emptyList()
     }
-    LocationEvents.deliverBackgroundLocations(context, source, locations)
+    val delivered = if (source == LocationBatchSource.BACKGROUND) {
+      DistanceFilter.filterPersisted(context, locations)
+    } else {
+      locations
+    }
+    LocationEvents.deliverBackgroundLocations(context, source, delivered)
   }
 
   private fun deliverGeofence(context: Context, intent: Intent) {

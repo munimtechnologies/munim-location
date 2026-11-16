@@ -152,10 +152,13 @@ object LocationEngine {
       .setGranularity(granularity(options.granularity, options.accuracy))
       .setWaitForAccurateLocation(options.waitForAccurateLocation)
     if (options.fastestIntervalMs > 0) builder.setMinUpdateIntervalMillis(options.fastestIntervalMs.toLong())
-    if (options.distanceFilter > 0) builder.setMinUpdateDistanceMeters(options.distanceFilter.toFloat())
+    // distanceFilter is applied by DistanceFilter, not setMinUpdateDistanceMeters
+    // (the provider can withhold every fix from a device that does not move).
     if (options.maxUpdateDelayMs > 0) builder.setMaxUpdateDelayMillis(options.maxUpdateDelayMs.toLong())
     if (options.minUpdateAgeMs > 0) builder.setMaxUpdateAgeMillis(options.minUpdateAgeMs.toLong())
-    if (options.maxUpdates > 0) builder.setMaxUpdates(options.maxUpdates.toInt())
+    // With a distance filter some fixes are dropped after the provider counted
+    // them, so maxUpdates is enforced in watch() alone.
+    if (options.maxUpdates > 0 && options.distanceFilter <= 0) builder.setMaxUpdates(options.maxUpdates.toInt())
     return builder.build()
   }
 
@@ -170,9 +173,8 @@ object LocationEngine {
     val builder = LocationRequestCompat.Builder(options.intervalMs.toLong().coerceAtLeast(0))
       .setQuality(quality(priority(options.priority, options.accuracy)))
     if (options.fastestIntervalMs > 0) builder.setMinUpdateIntervalMillis(options.fastestIntervalMs.toLong())
-    if (options.distanceFilter > 0) builder.setMinUpdateDistanceMeters(options.distanceFilter.toFloat())
     if (options.maxUpdateDelayMs > 0) builder.setMaxUpdateDelayMillis(options.maxUpdateDelayMs.toLong())
-    if (options.maxUpdates > 0) builder.setMaxUpdates(options.maxUpdates.toInt())
+    if (options.maxUpdates > 0 && options.distanceFilter <= 0) builder.setMaxUpdates(options.maxUpdates.toInt())
     return builder.build()
   }
 
@@ -309,14 +311,16 @@ object LocationEngine {
     }
     val limit = options.maxUpdates.toInt()
     var delivered = 0
+    val distance = DistanceFilter(options.distanceFilter)
     // Runs on the engine thread (the request executor).
     val accept: (List<android.location.Location>) -> Unit = accept@{ locations ->
       if (watches[id]?.gate?.paused == true) return@accept
-      var accepted = locations
+      var accepted = distance.filter(locations)
+      if (accepted.isEmpty()) return@accept
       if (limit > 0) {
         val remaining = limit - delivered
         if (remaining <= 0) return@accept
-        accepted = locations.take(remaining)
+        accepted = accepted.take(remaining)
       }
       delivered += accepted.size
       batcher.add(accepted)
@@ -618,7 +622,6 @@ object LocationEngine {
       .setGranularity(granularity(granularity, accuracy))
       .setWaitForAccurateLocation(json.optBoolean("waitForAccurateLocation", false))
     json.optDouble("fastestIntervalMs", 0.0).takeIf { it > 0 }?.let { builder.setMinUpdateIntervalMillis(it.toLong()) }
-    json.optDouble("distanceFilter", 0.0).takeIf { it > 0 }?.let { builder.setMinUpdateDistanceMeters(it.toFloat()) }
     json.optDouble("maxUpdateDelayMs", 0.0).takeIf { it > 0 }?.let { builder.setMaxUpdateDelayMillis(it.toLong()) }
     json.optDouble("minUpdateAgeMs", 0.0).takeIf { it > 0 }?.let { builder.setMaxUpdateAgeMillis(it.toLong()) }
     return builder.build()
@@ -647,6 +650,7 @@ object LocationEngine {
     LocationStore.setString(context, LocationStore.BACKGROUND_OPTIONS, json.toString())
     LocationStore.setBoolean(context, LocationStore.BACKGROUND_RUNNING, true)
     LocationStore.setBoolean(context, LocationStore.BACKGROUND_PAUSED, false)
+    LocationStore.setString(context, LocationStore.BACKGROUND_LAST_DELIVERED, null)
     resumeBackground(context, fromBoot = false)
   }
 
