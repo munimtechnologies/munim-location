@@ -323,6 +323,23 @@ export async function runChecks(
     expect(locations.length === count, `updates after remove (${locations.length - count})`)
     return { count, watchId: subscription.watchId, firstFixWithinMs: firstFixMs }
   })
+  await check('subscribeToPosition Accuracy.Low (fresh first fix within 20 s)', async () => {
+    needsGrant()
+    // minUpdateAgeMs 1 rules out a cached fix, so the first fix is a new
+    // low-power one (or, on Android, its balanced retry: Wi-Fi-only phones
+    // have no low-power source).
+    const locations: Location.Location[] = []
+    const started = Date.now()
+    const subscription = Location.subscribeToPosition(
+      location => locations.push(location),
+      { accuracy: Location.Accuracy.Low, intervalMs: 5000, minUpdateAgeMs: 1 }
+    )
+    while (locations.length === 0 && Date.now() - started < 20000) await sleep(100)
+    const firstFixMs = locations.length > 0 ? Date.now() - started : undefined
+    subscription.remove()
+    expect(firstFixMs !== undefined, 'no fix within 20000 ms')
+    return { firstFixWithinMs: firstFixMs, horizontalAccuracy: Math.round(locations[0]?.horizontalAccuracy ?? -1) }
+  })
   await check('subscribeToPositionBatches (native batching, 7 s)', async () => {
     needsGrant()
     const batches: number[] = []
