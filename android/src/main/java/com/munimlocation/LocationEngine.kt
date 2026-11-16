@@ -236,7 +236,7 @@ object LocationEngine {
    * So when such a request has no fix after [fallbackGraceMs] (or ends empty
    * sooner), the platform network provider is asked once as well: Wi-Fi /
    * cell positioning, never GNSS, and not subject to that throttling (it may
-   * answer with a recent fix it already has, seen up to 15 s old). The fused request
+   * answer with a recent fix it already has, seen up to ~20 s old). The fused request
    * keeps running; the first fix wins. With coarse
    * granularity the fix must come from the fused provider (which coarsens
    * it), so a low-power request asks it again at balanced power instead and
