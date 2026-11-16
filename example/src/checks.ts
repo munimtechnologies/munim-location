@@ -323,11 +323,12 @@ export async function runChecks(
     expect(locations.length === count, `updates after remove (${locations.length - count})`)
     return { count, watchId: subscription.watchId, firstFixWithinMs: firstFixMs }
   })
-  await check('subscribeToPosition Accuracy.Low (fresh first fix within 20 s)', async () => {
+  await check('subscribeToPosition Accuracy.Low (first fix within 20 s)', async () => {
     needsGrant()
-    // minUpdateAgeMs 1 rules out a cached fix, so the first fix is a new
-    // low-power one (or, on Android, its balanced retry: Wi-Fi-only phones
-    // have no low-power source).
+    // minUpdateAgeMs 1 keeps the fused provider from answering from its
+    // cache, so on Android the first fix is a new low-power one or, when Play
+    // services holds that back (a Wi-Fi-only phone lying still), the network
+    // provider's.
     const locations: Location.Location[] = []
     const started = Date.now()
     const subscription = Location.subscribeToPosition(
