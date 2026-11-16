@@ -83,7 +83,19 @@ object LocationEngine {
   /** A running watch: its platform callback, delivery batcher, and stationary gate. */
   private class WatchEntry(val callback: Any, val batcher: LocationBatcher) {
     var gate: StationaryGate? = null
+    var cancelFirstFix: (() -> Unit)? = null
   }
+
+  /**
+   * How old a cached fix may be to open a watch: `minUpdateAgeMs` when set,
+   * else twice the interval, at least 10 s.
+   */
+  private fun firstFixMaxAgeMs(options: WatchOptions): Long =
+    if (options.minUpdateAgeMs > 0) {
+      options.minUpdateAgeMs.toLong()
+    } else {
+      maxOf(options.intervalMs.toLong() * 2, 10_000L)
+    }
   private val settingsRequestCodes = AtomicInteger(42_000)
 
   @Volatile
@@ -347,6 +359,24 @@ object LocationEngine {
           watches.remove(id)
           LocationEvents.emit("locationError", errorBody(mapError(error)) + mapOf("watchId" to id))
         }
+      // Prompt first fix: Play services throttles continuous requests on a
+      // device lying still ("stationary throttling"), so a new watch could
+      // wait 20 s+ for its first update while a one-shot request answers in
+      // well under a second. The one-shot fix (a fresh enough cached fix, or a
+      // new one at the same priority) opens the watch and counts as its first
+      // delivery; it is dropped if the stream delivered first.
+      val firstFixToken = CancellationTokenSource()
+      entry.cancelFirstFix = { firstFixToken.cancel() }
+      val firstFixRequest = CurrentLocationRequest.Builder()
+        .setPriority(priority(options.priority, options.accuracy))
+        .setGranularity(granularity(options.granularity, options.accuracy))
+        .setMaxUpdateAgeMillis(firstFixMaxAgeMs(options))
+        .setDurationMillis(30_000L)
+        .build()
+      fused(context).getCurrentLocation(firstFixRequest, firstFixToken.token)
+        .addOnSuccessListener(executor) { location ->
+          if (location != null && delivered == 0 && watches[id] === entry) accept(listOf(location))
+        }
       if (options.pauseWhenStationary) {
         val gate = StationaryGate(context, "watch-$id") { paused ->
           if (watches[id] !== entry) return@StationaryGate
@@ -387,8 +417,24 @@ object LocationEngine {
           LocationEvents.emit("locationAvailability", mapOf("watchId" to id, "available" to true))
         }
       }
-      watches[id] = WatchEntry(listener, batcher)
+      val entry = WatchEntry(listener, batcher)
+      watches[id] = entry
       LocationManagerCompat.requestLocationUpdates(manager, provider, compatRequest(options), executor, listener)
+      // Prompt first fix, as on the fused path.
+      val cached = try {
+        manager.getLastKnownLocation(provider)
+      } catch (_: Throwable) {
+        null
+      }
+      if (cached != null && ageMs(cached) <= firstFixMaxAgeMs(options)) {
+        handler.post { if (delivered == 0 && watches[id] === entry) accept(listOf(cached)) }
+      } else {
+        val signal = android.os.CancellationSignal()
+        entry.cancelFirstFix = { signal.cancel() }
+        LocationManagerCompat.getCurrentLocation(manager, provider, signal, executor) { location ->
+          if (location != null && delivered == 0 && watches[id] === entry) accept(listOf(location))
+        }
+      }
     }
     return id
   }
@@ -396,6 +442,7 @@ object LocationEngine {
   fun clearWatch(id: Int) {
     val entry = watches.remove(id) ?: return
     val context = context()
+    entry.cancelFirstFix?.invoke()
     entry.gate?.stop()
     entry.batcher.discard()
     when (val callback = entry.callback) {

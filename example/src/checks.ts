@@ -225,15 +225,25 @@ export async function runChecks(
     needsGrant()
     const locations: Location.Location[] = []
     const errors: string[] = []
+    const started = Date.now()
+    let firstFixMs: number | undefined
     const id = Location.watchPosition(
-      location => locations.push(location),
+      location => {
+        firstFixMs ??= Date.now() - started
+        locations.push(location)
+      },
       error => errors.push(error.code),
       { accuracy: 'nearestTenMeters', intervalMs: 1000 }
     )
     await sleep(6000)
     Location.clearWatch(id)
     expect(locations.length > 0, `no locations (errors: ${errors.join(', ') || 'none'})`)
-    return { count: locations.length, last: locations[locations.length - 1], errors }
+    return {
+      count: locations.length,
+      firstFixWithinMs: firstFixMs,
+      last: locations[locations.length - 1],
+      errors,
+    }
   })
   await check('watchPosition liveUpdates (iOS 17+)', async () => {
     if (!ios || !capabilities?.liveUpdatesAvailable) throw new Skip('iOS 17+ only')
@@ -309,7 +319,7 @@ export async function runChecks(
     subscription.remove()
     const count = locations.length
     await sleep(2500)
-    expect(count > 0, 'no locations')
+    expect(count > 0, `no locations within ${Date.now() - started - 2500} ms`)
     expect(locations.length === count, `updates after remove (${locations.length - count})`)
     return { count, watchId: subscription.watchId, firstFixWithinMs: firstFixMs }
   })
