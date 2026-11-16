@@ -269,31 +269,46 @@ export async function runChecks(
     expect(Location.Accuracy.Balanced === 'hundredMeters', 'Balanced')
     expect(Location.Accuracy.High === 'nearestTenMeters', 'High')
     needsGrant()
-    const fixes: Record<string, number> = {}
+    // Every preset is tried and reported, so a failure names the preset.
+    // Low / Balanced are low-power requests: indoors without cell service
+    // (Wi-Fi only) Android may not compute a fresh one within the timeout.
+    const fixes: Record<string, number | string> = {}
+    const failed: string[] = []
     for (const preset of ['Low', 'Balanced', 'High'] as const) {
-      const location = await Location.getCurrentPosition({
-        accuracy: Location.Accuracy[preset],
-        timeoutMs: 15000,
-      })
-      fixes[preset] = Math.round(location.horizontalAccuracy)
+      try {
+        const location = await Location.getCurrentPosition({
+          accuracy: Location.Accuracy[preset],
+          timeoutMs: 15000,
+        })
+        fixes[preset] = Math.round(location.horizontalAccuracy)
+      } catch (error) {
+        fixes[preset] = (error as Location.LocationError).code ?? String(error)
+        failed.push(preset)
+      }
     }
+    expect(failed.length === 0, `no fix for ${failed.join(', ')}: ${JSON.stringify(fixes)}`)
     return fixes
   })
-  await check('subscribeToPosition / remove (5 s)', async () => {
+  await check('subscribeToPosition / remove (first fix, then 2.5 s)', async () => {
     needsGrant()
     const locations: Location.Location[] = []
+    const started = Date.now()
     const subscription = Location.subscribeToPosition(
       location => locations.push(location),
       { accuracy: Location.Accuracy.Balanced, intervalMs: 1000, distanceFilter: 3 }
     )
+    // This check is about remove(); a balanced (Wi-Fi / cell) first fix can
+    // take longer than 5 s indoors, so wait for it (up to 20 s).
     await sleep(5000)
+    while (locations.length === 0 && Date.now() - started < 20000) await sleep(500)
+    const firstFixMs = locations.length > 0 ? Date.now() - started : undefined
     subscription.remove()
     subscription.remove()
     const count = locations.length
     await sleep(2500)
     expect(count > 0, 'no locations')
     expect(locations.length === count, `updates after remove (${locations.length - count})`)
-    return { count, watchId: subscription.watchId }
+    return { count, watchId: subscription.watchId, firstFixWithinMs: firstFixMs }
   })
   await check('subscribeToPositionBatches (native batching, 7 s)', async () => {
     needsGrant()
