@@ -59,7 +59,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build iOS Example App (Xcode ${{ matrix.xcode }})
+    name: Build iOS Example App (Xcode ${{ matrix.xcode }}, ${{ matrix.configuration }} ${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -68,9 +68,23 @@ jobs:
           # Swift 6.2/6.3: the iOS 27 code paths must compile out.
           - runner: macos-26
             xcode: '26.6'
+            configuration: Debug
+            platform: iOS Simulator
           # Swift 6.4 + iOS 27 SDK: iOS 27 symbols (maritime activity) compile in.
           - runner: xcode-27
             xcode: '27.0'
+            configuration: Debug
+            platform: iOS Simulator
+          # Release device builds link against the Release prebuilt React Native
+          # frameworks, which Debug simulator builds never touch.
+          - runner: macos-26
+            xcode: '26.6'
+            configuration: Release
+            platform: iOS
+          - runner: xcode-27
+            xcode: '27.0'
+            configuration: Release
+            platform: iOS
     steps:
       - uses: actions/checkout@v7
       - name: Setup Xcode
@@ -106,7 +120,8 @@ jobs:
           # node_modules podspecs (React Native, Nitro) change with package-lock.json
           # while Podfile.lock may lag, so both are part of the key; no prefix
           # fallback, because stale Pods/Local Podspecs make `pod install` fail.
-          key: ${{ runner.os }}-xcode${{ matrix.xcode }}-pods-${{ hashFiles('example/ios/Podfile.lock', 'package-lock.json', '*.podspec') }}
+          # Per configuration: the build swaps the prebuilt RN frameworks inside Pods/.
+          key: ${{ runner.os }}-xcode${{ matrix.xcode }}-${{ matrix.configuration }}-pods-${{ hashFiles('example/ios/Podfile.lock', 'package-lock.json', '*.podspec') }}
 
       - name: Install Pods
         working-directory: example/ios
@@ -123,7 +138,17 @@ jobs:
             -derivedDataPath build -UseModernBuildSystem=YES \
             -workspace MunimLocationExample.xcworkspace \
             -scheme MunimLocationExample \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
+            -configuration '${{ matrix.configuration }}' \
+            -destination 'generic/platform=${{ matrix.platform }}' \
             build \
-            CODE_SIGNING_ALLOWED=NO | xcpretty
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty
+
+      - name: Linker diagnostics
+        if: failure()
+        working-directory: example/ios
+        run: |
+          grep -n -A40 "Undefined symbols" xcodebuild.log | head -120 || true
+          grep -n "^Ld .*MunimLocationExample" -A3 xcodebuild.log | cut -c1-6000 | head -12 || true
+          grep -h "OTHER_LDFLAGS\|FRAMEWORK_SEARCH_PATHS" "Pods/Target Support Files/Pods-MunimLocationExample/"*.xcconfig || true
+          cat Pods/ReactNativeDependencies/.last_build_configuration 2>/dev/null || true
+          grep -n "RNDeps\|Replac" xcodebuild.log | head -20 || true
