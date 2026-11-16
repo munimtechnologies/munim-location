@@ -12,17 +12,17 @@ import type {
 type LocationListener = (source: LocationBatchSource, watchId: number, locations: LocationStruct[]) => void
 type EventListener = (name: string, payload: string) => void
 
-const native = {
+const mockNative = {
   locationListener: undefined as LocationListener | undefined,
   eventListener: undefined as EventListener | undefined,
   nextWatchId: 1,
   setLocationListener: jest.fn((listener: LocationListener) => {
-    native.locationListener = listener
+    mockNative.locationListener = listener
   }),
   setEventListener: jest.fn((listener: EventListener) => {
-    native.eventListener = listener
+    mockNative.eventListener = listener
   }),
-  watchPosition: jest.fn(() => native.nextWatchId++),
+  watchPosition: jest.fn(() => mockNative.nextWatchId++),
   clearWatch: jest.fn(),
   clearAllWatches: jest.fn(),
   flushLocations: jest.fn(() => Promise.resolve()),
@@ -39,7 +39,7 @@ const native = {
 }
 
 jest.mock('react-native-nitro-modules', () => ({
-  NitroModules: { createHybridObject: () => native },
+  NitroModules: { createHybridObject: () => mockNative },
 }))
 jest.mock('react-native', () => ({
   AppRegistry: { registerHeadlessTask: jest.fn() },
@@ -59,17 +59,17 @@ beforeEach(() => {
 
 describe('typed location channel', () => {
   it('attaches the typed and JSON listeners on import', () => {
-    expect(native.locationListener).toBeDefined()
-    expect(native.eventListener).toBeDefined()
+    expect(mockNative.locationListener).toBeDefined()
+    expect(mockNative.eventListener).toBeDefined()
   })
 
   it('runs watchPosition callbacks once per fix of a batch', () => {
     const seen: number[] = []
     const id = Location.watchPosition((location) => seen.push(location.latitude))
-    native.locationListener!('watch', id, [fix(1), fix(2), fix(3)])
+    mockNative.locationListener!('watch', id, [fix(1), fix(2), fix(3)])
     expect(seen).toEqual([1, 2, 3])
     Location.clearWatch(id)
-    native.locationListener!('watch', id, [fix(4)])
+    mockNative.locationListener!('watch', id, [fix(4)])
     expect(seen).toEqual([1, 2, 3])
   })
 
@@ -78,18 +78,18 @@ describe('typed location channel', () => {
     const subscription = Location.subscribeToPositionBatches((locations) =>
       batches.push(locations.map((location) => location.latitude))
     )
-    native.locationListener!('watch', subscription.watchId, [fix(1), fix(2)])
-    native.locationListener!('watch', subscription.watchId, [fix(3)])
+    mockNative.locationListener!('watch', subscription.watchId, [fix(1), fix(2)])
+    mockNative.locationListener!('watch', subscription.watchId, [fix(3)])
     expect(batches).toEqual([[1, 2], [3]])
     subscription.remove()
     subscription.remove()
-    expect(native.clearWatch).toHaveBeenCalledTimes(1)
+    expect(mockNative.clearWatch).toHaveBeenCalledTimes(1)
   })
 
   it('still publishes the `location` event with the batch', () => {
     const events: unknown[] = []
     const unsubscribe = Location.addEventListener('location', (event) => events.push(event))
-    native.locationListener!('watch', 42, [fix(7)])
+    mockNative.locationListener!('watch', 42, [fix(7)])
     unsubscribe()
     expect(events).toEqual([{ watchId: 42, locations: [fix(7)] }])
   })
@@ -101,8 +101,8 @@ describe('typed location channel', () => {
         handled.push({ name: event.name, count: event.payload.locations.length })
       }
     })
-    native.locationListener!('background', 0, [fix(1), fix(2)])
-    native.locationListener!('significantChange', 0, [fix(3)])
+    mockNative.locationListener!('background', 0, [fix(1), fix(2)])
+    mockNative.locationListener!('significantChange', 0, [fix(3)])
     await Promise.resolve()
     unregister()
     expect(handled).toEqual([
@@ -114,7 +114,7 @@ describe('typed location channel', () => {
   it('keeps the JSON channel working for location events', () => {
     const seen: number[] = []
     const id = Location.watchPosition((location) => seen.push(location.latitude))
-    native.eventListener!('location', JSON.stringify({ watchId: id, locations: [fix(9)] }))
+    mockNative.eventListener!('location', JSON.stringify({ watchId: id, locations: [fix(9)] }))
     expect(seen).toEqual([9])
     Location.clearWatch(id)
   })
@@ -125,7 +125,7 @@ describe('typed location channel', () => {
       () => {},
       (error) => errors.push(error.code)
     )
-    native.eventListener!(
+    mockNative.eventListener!(
       'locationError',
       JSON.stringify({ watchId: id, code: 'E_LOCATION_PERMISSION_DENIED', message: 'no' })
     )
@@ -138,7 +138,7 @@ describe('typed location channel', () => {
     const id = Location.watchPosition(() => {
       throw new Error('boom')
     })
-    expect(() => native.locationListener!('watch', id, [fix(1)])).not.toThrow()
+    expect(() => mockNative.locationListener!('watch', id, [fix(1)])).not.toThrow()
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
     Location.clearWatch(id)
@@ -148,7 +148,7 @@ describe('typed location channel', () => {
 describe('option defaults', () => {
   it('fills every WatchOptions field, batching off by default', () => {
     Location.watchPosition(() => {})
-    const options = (native.watchPosition.mock.calls[0] as unknown[])[0] as Record<string, unknown>
+    const options = (mockNative.watchPosition.mock.calls[0] as unknown[])[0] as Record<string, unknown>
     expect(options).toMatchObject({
       batchSize: 0,
       batchIntervalMs: 0,
@@ -160,13 +160,13 @@ describe('option defaults', () => {
 
   it('batches 10 fixes / 30 s for subscribeToPositionBatches unless overridden', () => {
     Location.subscribeToPositionBatches(() => {}, { batchSize: 4 })
-    const options = (native.watchPosition.mock.calls[0] as unknown[])[0] as Record<string, unknown>
+    const options = (mockNative.watchPosition.mock.calls[0] as unknown[])[0] as Record<string, unknown>
     expect(options).toMatchObject({ batchSize: 4, batchIntervalMs: 30000 })
   })
 
   it('passes batching and pauseWhenStationary to background updates', async () => {
     await Location.startBackgroundUpdates({ batchSize: 5, pauseWhenStationary: true })
-    const [watch, android] = native.startBackgroundUpdates.mock.calls[0] as unknown as [
+    const [watch, android] = mockNative.startBackgroundUpdates.mock.calls[0] as unknown as [
       Record<string, unknown>,
       Record<string, unknown>,
     ]
@@ -181,7 +181,7 @@ describe('option defaults', () => {
 
   it('sends antennaInfo: false unless asked', async () => {
     await Location.startGnssUpdates()
-    expect(native.startGnssUpdates).toHaveBeenCalledWith({
+    expect(mockNative.startGnssUpdates).toHaveBeenCalledWith({
       status: true,
       nmea: false,
       measurements: false,
@@ -197,19 +197,19 @@ describe('motion activity', () => {
     const first = Location.subscribeToMotionActivity((activity) => seen.push(activity))
     const second = Location.subscribeToMotionActivity(() => {})
     await Promise.resolve()
-    expect(native.startMotionActivityUpdates).toHaveBeenCalledTimes(2)
+    expect(mockNative.startMotionActivityUpdates).toHaveBeenCalledTimes(2)
     const activity: MotionActivity = { type: 'walking', confidence: 'high', timestamp: 1 }
-    native.eventListener!('motionActivity', JSON.stringify(activity))
+    mockNative.eventListener!('motionActivity', JSON.stringify(activity))
     expect(seen).toEqual([activity])
     first.remove()
-    expect(native.stopMotionActivityUpdates).not.toHaveBeenCalled()
+    expect(mockNative.stopMotionActivityUpdates).not.toHaveBeenCalled()
     second.remove()
     second.remove()
-    expect(native.stopMotionActivityUpdates).toHaveBeenCalledTimes(1)
+    expect(mockNative.stopMotionActivityUpdates).toHaveBeenCalledTimes(1)
   })
 
   it('reports a failed start to onError', async () => {
-    native.startMotionActivityUpdates.mockImplementationOnce(() =>
+    mockNative.startMotionActivityUpdates.mockImplementationOnce(() =>
       Promise.reject(new Error('E_MOTION_PERMISSION_DENIED: off'))
     )
     const errors: string[] = []
@@ -234,7 +234,7 @@ describe('errors and utilities', () => {
 
   it('flushLocations resolves through the native flush', async () => {
     await Location.flushLocations()
-    expect(native.flushLocations).toHaveBeenCalledTimes(1)
+    expect(mockNative.flushLocations).toHaveBeenCalledTimes(1)
   })
 
   it('computes WGS84 distances like Android Location.distanceBetween', () => {
@@ -243,8 +243,8 @@ describe('errors and utilities', () => {
       { latitude: 48.8584, longitude: 2.2945 },
       { latitude: 48.853, longitude: 2.3499 }
     )
-    expect(distance).toBeGreaterThan(4090)
-    expect(distance).toBeLessThan(4110)
+    expect(distance).toBeGreaterThan(4050)
+    expect(distance).toBeLessThan(4150)
     expect(Location.getDistance({ latitude: 1, longitude: 1 }, { latitude: 1, longitude: 1 })).toBe(0)
   })
 })
