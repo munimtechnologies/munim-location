@@ -29,6 +29,8 @@ object LocationStore {
 
   const val BACKGROUND_RUNNING = "background.running"
   const val BACKGROUND_OPTIONS = "background.options"
+  /** Background updates are in their `pauseWhenStationary` low-power state. */
+  const val BACKGROUND_PAUSED = "background.paused"
   const val SIGNIFICANT_RUNNING = "significant.running"
   const val ASKED_FOREGROUND = "asked.foreground"
   const val ASKED_BACKGROUND = "asked.background"

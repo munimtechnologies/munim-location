@@ -10,7 +10,7 @@ const DEFAULT_WHEN_IN_USE =
 const DEFAULT_ALWAYS =
   'This app uses your location in the background to keep location-based features working when the app is closed.';
 const DEFAULT_MOTION =
-  'This app uses the barometer to measure altitude changes.';
+  'This app uses motion data to measure altitude changes and to save battery while you are not moving.';
 
 const NOTIFICATION_META = {
   androidNotificationTitle: 'com.munimlocation.notification_title',
@@ -60,6 +60,7 @@ function ensureMetaData(application, name, value) {
  *   androidPermissions?: Array<'fine' | 'coarse' | 'background'> | false,
  *   isAndroidBackgroundLocationEnabled?: boolean,
  *   isAndroidForegroundServiceEnabled?: boolean,
+ *   isAndroidActivityRecognitionEnabled?: boolean,
  *   androidBootReceiver?: boolean,
  *   androidNotificationTitle?: string,
  *   androidNotificationText?: string,
@@ -152,6 +153,15 @@ function withMunimLocation(config, options = {}) {
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(
       pluginConfig.modResults
     );
+    if (options.isAndroidActivityRecognitionEnabled) {
+      // Motion activity and pauseWhenStationary: runtime permission on
+      // Android 10+, the Play services install-time one below that.
+      ensureAndroidPermission(manifest, 'android.permission.ACTIVITY_RECOGNITION');
+      ensureAndroidPermission(
+        manifest,
+        'com.google.android.gms.permission.ACTIVITY_RECOGNITION'
+      );
+    }
     if (options.androidBootReceiver) {
       // The library manifest declares the boot receiver; it only fires once
       // the app holds this permission.

@@ -78,7 +78,12 @@ object LocationEngine {
   val executor: Executor = Executor { handler.post(it) }
   private val mainHandler = Handler(Looper.getMainLooper())
   private val watchIds = AtomicInteger(0)
-  private val watches = ConcurrentHashMap<Int, Any>()
+  private val watches = ConcurrentHashMap<Int, WatchEntry>()
+
+  /** A running watch: its platform callback, delivery batcher, and stationary gate. */
+  private class WatchEntry(val callback: Any, val batcher: LocationBatcher) {
+    var gate: StationaryGate? = null
+  }
   private val settingsRequestCodes = AtomicInteger(42_000)
 
   @Volatile
@@ -153,6 +158,13 @@ object LocationEngine {
     if (options.maxUpdates > 0) builder.setMaxUpdates(options.maxUpdates.toInt())
     return builder.build()
   }
+
+  /**
+   * The request while `pauseWhenStationary` holds updates: passive (fixes
+   * other apps already pay for, no GNSS / Wi-Fi scans of our own).
+   */
+  fun stationaryRequest(intervalMs: Long): LocationRequest =
+    LocationRequest.Builder(Priority.PRIORITY_PASSIVE, intervalMs.coerceAtLeast(60_000L)).build()
 
   private fun compatRequest(options: WatchOptions): LocationRequestCompat {
     val builder = LocationRequestCompat.Builder(options.intervalMs.toLong().coerceAtLeast(0))
@@ -292,15 +304,30 @@ object LocationEngine {
       }
       return id
     }
+    val batcher = LocationBatcher(options.batchSize, options.batchIntervalMs, handler) {
+      LocationEvents.emitLocations(id, it)
+    }
+    val limit = options.maxUpdates.toInt()
+    var delivered = 0
+    // Runs on the engine thread (the request executor).
+    val accept: (List<android.location.Location>) -> Unit = accept@{ locations ->
+      if (watches[id]?.gate?.paused == true) return@accept
+      var accepted = locations
+      if (limit > 0) {
+        val remaining = limit - delivered
+        if (remaining <= 0) return@accept
+        accepted = locations.take(remaining)
+      }
+      delivered += accepted.size
+      batcher.add(accepted)
+      if (limit > 0 && delivered >= limit) {
+        batcher.flush()
+        clearWatch(id)
+      }
+    }
     if (playServicesAvailable(context)) {
       val callback = object : LocationCallback() {
-        private var delivered = 0
-
-        override fun onLocationResult(result: LocationResult) {
-          delivered += result.locations.size
-          LocationEvents.emit("location", mapOf("watchId" to id) + LocationJson.locations(result.locations))
-          if (options.maxUpdates > 0 && delivered >= options.maxUpdates) clearWatch(id)
-        }
+        override fun onLocationResult(result: LocationResult) = accept(result.locations)
 
         override fun onLocationAvailability(availability: LocationAvailability) {
           LocationEvents.emit(
@@ -309,12 +336,30 @@ object LocationEngine {
           )
         }
       }
-      watches[id] = callback
+      val entry = WatchEntry(callback, batcher)
+      watches[id] = entry
       fused(context).requestLocationUpdates(locationRequest(options), executor, callback)
         .addOnFailureListener(executor) { error ->
           watches.remove(id)
           LocationEvents.emit("locationError", errorBody(mapError(error)) + mapOf("watchId" to id))
         }
+      if (options.pauseWhenStationary) {
+        val gate = StationaryGate(context, "watch-$id") { paused ->
+          if (watches[id] !== entry) return@StationaryGate
+          if (paused) {
+            batcher.flush()
+            fused(context).requestLocationUpdates(stationaryRequest(options.intervalMs.toLong()), executor, callback)
+          } else {
+            fused(context).requestLocationUpdates(locationRequest(options), executor, callback)
+          }
+          LocationEvents.emit(
+            if (paused) "locationUpdatesPaused" else "locationUpdatesResumed",
+            mapOf("watchId" to id, "source" to "motion")
+          )
+        }
+        entry.gate = gate
+        gate.start()
+      }
     } else {
       val manager = locationManager(context)
       val provider = bestProvider(manager, priority(options.priority, options.accuracy))
@@ -326,9 +371,9 @@ object LocationEngine {
         return id
       }
       val listener = object : LocationListenerCompat {
-        override fun onLocationChanged(location: android.location.Location) {
-          LocationEvents.emit("location", mapOf("watchId" to id) + LocationJson.locations(listOf(location)))
-        }
+        override fun onLocationChanged(location: android.location.Location) = accept(listOf(location))
+
+        override fun onLocationChanged(locations: MutableList<android.location.Location>) = accept(locations)
 
         override fun onProviderDisabled(provider: String) {
           LocationEvents.emit("locationAvailability", mapOf("watchId" to id, "available" to false))
@@ -338,7 +383,7 @@ object LocationEngine {
           LocationEvents.emit("locationAvailability", mapOf("watchId" to id, "available" to true))
         }
       }
-      watches[id] = listener
+      watches[id] = WatchEntry(listener, batcher)
       LocationManagerCompat.requestLocationUpdates(manager, provider, compatRequest(options), executor, listener)
     }
     return id
@@ -347,10 +392,31 @@ object LocationEngine {
   fun clearWatch(id: Int) {
     val entry = watches.remove(id) ?: return
     val context = context()
-    when (entry) {
-      is LocationCallback -> fused(context).removeLocationUpdates(entry)
-      is LocationListenerCompat -> LocationManagerCompat.removeUpdates(locationManager(context), entry)
+    entry.gate?.stop()
+    entry.batcher.discard()
+    when (val callback = entry.callback) {
+      is LocationCallback -> fused(context).removeLocationUpdates(callback)
+      is LocationListenerCompat -> LocationManagerCompat.removeUpdates(locationManager(context), callback)
     }
+  }
+
+  /**
+   * Hands buffered fixes to JavaScript: asks the Fused Location Provider to
+   * deliver its `maxUpdateDelayMs` batches, then empties our own batchers.
+   */
+  fun flushLocations(resolve: () -> Unit) {
+    val context = context()
+    val flushOwn = {
+      watches.values.forEach { it.batcher.flush() }
+      MunimLocationService.current?.flush()
+      resolve()
+    }
+    if (!playServicesAvailable(context)) {
+      handler.post(flushOwn)
+      return
+    }
+    // Batched fixes reach the callbacks on the engine thread first.
+    fused(context).flushLocations().addOnCompleteListener(executor) { handler.post(flushOwn) }
   }
 
   fun clearAllWatches() {
@@ -539,6 +605,9 @@ object LocationEngine {
     .put("notificationColor", android.notificationColor)
     .put("restartOnBoot", android.restartOnBoot)
     .put("stopOnTaskRemoved", android.stopOnTaskRemoved)
+    .put("batchSize", options.batchSize)
+    .put("batchIntervalMs", options.batchIntervalMs)
+    .put("pauseWhenStationary", options.pauseWhenStationary)
 
   fun backgroundRequest(json: JSONObject): LocationRequest {
     val accuracy = runCatching { LocationAccuracy.valueOf(json.optString("accuracy")) }.getOrDefault(LocationAccuracy.BEST)
@@ -577,7 +646,36 @@ object LocationEngine {
     stopBackgroundInternal(context, persist = false)
     LocationStore.setString(context, LocationStore.BACKGROUND_OPTIONS, json.toString())
     LocationStore.setBoolean(context, LocationStore.BACKGROUND_RUNNING, true)
+    LocationStore.setBoolean(context, LocationStore.BACKGROUND_PAUSED, false)
     resumeBackground(context, fromBoot = false)
+  }
+
+  /**
+   * `pauseWhenStationary` for PendingIntent background updates (the
+   * foreground service runs its own gate). Called for every transition,
+   * also in a process started only to deliver it.
+   */
+  fun onBackgroundMotion(context: Context, activity: com.margelo.nitro.munimlocation.MotionActivity) {
+    if (!LocationStore.getBoolean(context, LocationStore.BACKGROUND_RUNNING)) return
+    val json = LocationStore.backgroundOptions(context) ?: return
+    if (!json.optBoolean("pauseWhenStationary", false)) return
+    if (json.optString("mode") != AndroidBackgroundMode.PENDINGINTENT.name) return
+    if (!playServicesAvailable(context)) return
+    val paused = LocationStore.getBoolean(context, LocationStore.BACKGROUND_PAUSED)
+    val next = LocationMotion.nextPaused(paused, activity)
+    if (next == paused) return
+    LocationStore.setBoolean(context, LocationStore.BACKGROUND_PAUSED, next)
+    val request = if (next) {
+      stationaryRequest(json.optDouble("intervalMs", 10_000.0).toLong())
+    } else {
+      backgroundRequest(json)
+    }
+    fused(context).requestLocationUpdates(request, pendingIntent(context, ACTION_LOCATION, 1))
+    LocationEvents.deliverBackground(
+      context,
+      if (next) "locationUpdatesPaused" else "locationUpdatesResumed",
+      mapOf("source" to "motion")
+    )
   }
 
   /** Starts background delivery from persisted options. */
@@ -596,6 +694,8 @@ object LocationEngine {
     }
     if (playServicesAvailable(context)) {
       fused(context).requestLocationUpdates(backgroundRequest(json), pendingIntent(context, ACTION_LOCATION, 1))
+      // PendingIntent mode has no in-process observer; keep transitions coming.
+      if (json.optBoolean("pauseWhenStationary", false)) LocationMotion.ensureRegistered(context)
     }
   }
 
@@ -605,6 +705,9 @@ object LocationEngine {
 
   private fun stopBackgroundInternal(context: Context, persist: Boolean) {
     if (persist) LocationStore.setBoolean(context, LocationStore.BACKGROUND_RUNNING, false)
+    LocationStore.setBoolean(context, LocationStore.BACKGROUND_PAUSED, false)
+    // Hand the service's buffered fixes over before it stops.
+    MunimLocationService.current?.flush()
     try {
       context.stopService(Intent(context, MunimLocationService::class.java))
     } catch (_: Throwable) {
@@ -612,6 +715,7 @@ object LocationEngine {
     if (playServicesAvailable(context)) {
       fused(context).removeLocationUpdates(pendingIntent(context, ACTION_LOCATION, 1))
     }
+    if (persist) LocationMotion.releaseIfUnused(context)
   }
 
   fun startSignificantChanges(context: Context = context()) {

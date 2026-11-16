@@ -168,7 +168,56 @@ export interface WatchOptions {
   allowsBackgroundLocationUpdates: boolean
   /** iOS showsBackgroundLocationIndicator. */
   showsBackgroundLocationIndicator: boolean
+  /**
+   * Native delivery batching: hand fixes to JavaScript once this many are
+   * buffered (0 or 1 = no count limit). Batching is on when this is above 1
+   * or `batchIntervalMs` is above 0.
+   */
+  batchSize: number
+  /**
+   * Native delivery batching: hand a partial batch to JavaScript at most
+   * this many ms after its first fix (0 = no time limit).
+   */
+  batchIntervalMs: number
+  /**
+   * Drop to a low-power request while the motion coprocessor reports the
+   * device still, and go back to the requested accuracy when it moves.
+   * Needs motion permission (iOS Motion & Fitness, Android 10+
+   * ACTIVITY_RECOGNITION); without it the request is left untouched.
+   */
+  pauseWhenStationary: boolean
 }
+
+/** Which subscription a typed location batch belongs to. */
+export type LocationBatchSource = 'watch' | 'background' | 'significantChange'
+
+// ========== Motion activity ==========
+
+export type MotionActivityType =
+  | 'still'
+  | 'walking'
+  | 'running'
+  | 'cycling'
+  | 'automotive'
+  | 'unknown'
+
+export type MotionConfidence = 'low' | 'medium' | 'high'
+
+export interface MotionActivity {
+  type: MotionActivityType
+  /** Android's transition API only reports confident transitions (`high`). */
+  confidence: MotionConfidence
+  /** Unix epoch ms when the activity started (iOS) or the transition happened (Android). */
+  timestamp: number
+}
+
+/** Motion & Fitness (iOS) / ACTIVITY_RECOGNITION (Android) permission. */
+export type MotionPermission =
+  | 'notDetermined'
+  | 'granted'
+  | 'denied'
+  | 'restricted'
+  | 'unavailable'
 
 // ========== Services and settings ==========
 
@@ -233,6 +282,8 @@ export interface BackgroundStatus {
   geofenceCount: number
   /** Events persisted while no JavaScript listener was attached. */
   pendingEventCount: number
+  /** Background updates are in their low-power stationary state (`pauseWhenStationary`). */
+  stationaryPaused: boolean
 }
 
 // ========== Geofencing and beacons ==========
@@ -312,6 +363,8 @@ export interface GnssOptions {
   measurements: boolean
   /** Opt-in: decoded navigation message bits. */
   navigationMessages: boolean
+  /** Android 11+: GNSS antenna phase-centre info (`gnssAntennaInfo` events). */
+  antennaInfo: boolean
 }
 
 export interface GnssInfo {
@@ -410,6 +463,10 @@ export interface LocationCapabilities {
   backgroundLocationModeEnabled: boolean
   /** iOS 15+: CLLocationManager.startMonitoringLocationPushes is available. */
   locationPushAvailable: boolean
+  /** iOS CMMotionActivityManager / Android Activity Recognition transitions. */
+  motionActivityAvailable: boolean
+  /** Android 11+: the GNSS chipset reports antenna info. */
+  gnssAntennaInfoAvailable: boolean
 }
 
 export interface MunimLocation
@@ -425,6 +482,25 @@ export interface MunimLocation
   /** JSON array of `{ name, payload, timestamp }` persisted background events. */
   getPendingBackgroundEvents(): string
   clearPendingBackgroundEvents(): void
+  /**
+   * Typed location channel: watch, background, and significant-change fixes
+   * arrive here as structs, one call per (possibly batched) delivery, with
+   * no JSON in between. While it is set those fixes skip the JSON channel.
+   * `watchId` is 0 for background and significant-change batches.
+   */
+  setLocationListener(
+    listener: (
+      source: LocationBatchSource,
+      watchId: number,
+      locations: Location[]
+    ) => void
+  ): void
+  removeLocationListener(): void
+  /**
+   * Delivers buffered (`batchSize` / `batchIntervalMs`) fixes now. Android
+   * also asks the Fused Location Provider to flush `maxUpdateDelayMs` batches.
+   */
+  flushLocations(): Promise<void>
 
   // ---------- Permissions ----------
   getPermissionStatus(): Promise<PermissionStatus>
@@ -501,6 +577,15 @@ export interface MunimLocation
   dismissHeadingCalibrationDisplay(): void
   startAltitudeUpdates(absolute: boolean): void
   stopAltitudeUpdates(): void
+
+  // ---------- Motion activity ----------
+  getMotionPermission(): Promise<MotionPermission>
+  /** iOS: shows the Motion & Fitness prompt; Android 10+: ACTIVITY_RECOGNITION. */
+  requestMotionPermission(): Promise<MotionPermission>
+  /** `motionActivity` events. Rejects with E_MOTION_PERMISSION_DENIED / E_UNSUPPORTED. */
+  startMotionActivityUpdates(): Promise<void>
+  stopMotionActivityUpdates(): void
+  getLastMotionActivity(): Promise<MotionActivity | undefined>
 
   // ---------- GNSS (Android) ----------
   getGnssInfo(): Promise<GnssInfo>

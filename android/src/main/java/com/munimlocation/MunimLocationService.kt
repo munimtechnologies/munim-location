@@ -22,6 +22,7 @@ import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationResult
+import com.margelo.nitro.munimlocation.LocationBatchSource
 import org.json.JSONObject
 
 /**
@@ -33,8 +34,20 @@ import org.json.JSONObject
 class MunimLocationService : Service() {
   private var callback: LocationCallback? = null
   private var listener: LocationListenerCompat? = null
+  private var batcher: LocationBatcher? = null
+  private var gate: StationaryGate? = null
 
   override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onCreate() {
+    super.onCreate()
+    current = this
+  }
+
+  /** Hands buffered fixes over now (flushLocations / stop). */
+  fun flush() {
+    batcher?.flush()
+  }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     LocationEngine.attach(this)
@@ -69,14 +82,18 @@ class MunimLocationService : Service() {
       stopSelf()
       return
     }
+    val context = this
+    val locationBatcher = LocationBatcher(
+      options.optDouble("batchSize", 0.0),
+      options.optDouble("batchIntervalMs", 0.0),
+      LocationEngine.handler
+    ) { LocationEvents.deliverBackgroundLocations(context, LocationBatchSource.BACKGROUND, it) }
+    batcher = locationBatcher
     if (LocationEngine.playServicesAvailable(this)) {
       val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-          LocationEvents.deliverBackground(
-            this@MunimLocationService,
-            "backgroundLocation",
-            LocationJson.locations(result.locations)
-          )
+          if (gate?.paused == true) return
+          locationBatcher.add(result.locations)
         }
       }
       callback = locationCallback
@@ -85,13 +102,31 @@ class MunimLocationService : Service() {
         LocationEngine.executor,
         locationCallback
       )
+      if (options.optBoolean("pauseWhenStationary", false)) {
+        val stationaryGate = StationaryGate(this, "background") { paused ->
+          if (callback !== locationCallback) return@StationaryGate
+          LocationStore.setBoolean(context, LocationStore.BACKGROUND_PAUSED, paused)
+          if (paused) locationBatcher.flush()
+          val request = if (paused) {
+            LocationEngine.stationaryRequest(options.optDouble("intervalMs", 10_000.0).toLong())
+          } else {
+            LocationEngine.backgroundRequest(options)
+          }
+          LocationEngine.fused(context).requestLocationUpdates(request, LocationEngine.executor, locationCallback)
+          LocationEvents.deliverBackground(
+            context,
+            if (paused) "locationUpdatesPaused" else "locationUpdatesResumed",
+            mapOf("source" to "motion")
+          )
+        }
+        gate = stationaryGate
+        stationaryGate.start()
+      }
     } else {
       val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
       val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
         .firstOrNull { manager.isProviderEnabled(it) } ?: return
-      val compatListener = LocationListenerCompat { location ->
-        LocationEvents.deliverBackground(this, "backgroundLocation", LocationJson.locations(listOf(location)))
-      }
+      val compatListener = LocationListenerCompat { location -> locationBatcher.add(listOf(location)) }
       listener = compatListener
       val request = LocationRequestCompat.Builder(options.optDouble("intervalMs", 10_000.0).toLong())
         .setMinUpdateDistanceMeters(options.optDouble("distanceFilter", 0.0).toFloat())
@@ -101,6 +136,10 @@ class MunimLocationService : Service() {
   }
 
   private fun stopUpdates() {
+    gate?.stop()
+    gate = null
+    batcher?.flush()
+    batcher = null
     callback?.let { LocationEngine.fused(this).removeLocationUpdates(it) }
     listener?.let {
       LocationManagerCompat.removeUpdates(getSystemService(Context.LOCATION_SERVICE) as LocationManager, it)
@@ -120,6 +159,7 @@ class MunimLocationService : Service() {
 
   override fun onDestroy() {
     stopUpdates()
+    if (current === this) current = null
     super.onDestroy()
   }
 
@@ -187,5 +227,10 @@ class MunimLocationService : Service() {
   companion object {
     private const val TAG = "MunimLocationService"
     private const val NOTIFICATION_ID = 0x4d4c
+
+    /** The running service, if any (same process). */
+    @Volatile
+    var current: MunimLocationService? = null
+      private set
   }
 }

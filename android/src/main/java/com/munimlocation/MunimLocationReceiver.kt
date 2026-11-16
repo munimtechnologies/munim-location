@@ -10,19 +10,25 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.LocationResult
+import com.margelo.nitro.munimlocation.LocationBatchSource
 
-/** PendingIntent target for background locations, significant changes, and geofences. */
+/** PendingIntent target for background locations, significant changes, geofences, and activity transitions. */
 class MunimLocationReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     LocationEngine.attach(context)
     when (intent.action) {
-      LocationEngine.ACTION_LOCATION -> deliverLocations(context, intent, "backgroundLocation")
-      LocationEngine.ACTION_SIGNIFICANT -> deliverLocations(context, intent, "significantLocationChange")
+      LocationEngine.ACTION_LOCATION -> {
+        // Passive fixes that still arrive while pauseWhenStationary holds updates.
+        if (LocationStore.getBoolean(context, LocationStore.BACKGROUND_PAUSED)) return
+        deliverLocations(context, intent, LocationBatchSource.BACKGROUND)
+      }
+      LocationEngine.ACTION_SIGNIFICANT -> deliverLocations(context, intent, LocationBatchSource.SIGNIFICANTCHANGE)
       LocationEngine.ACTION_GEOFENCE -> deliverGeofence(context, intent)
+      LocationMotion.ACTION_ACTIVITY -> LocationMotion.handleIntent(context, intent)
     }
   }
 
-  private fun deliverLocations(context: Context, intent: Intent, name: String) {
+  private fun deliverLocations(context: Context, intent: Intent, source: LocationBatchSource) {
     val locations = when {
       LocationResult.hasResult(intent) -> LocationResult.extractResult(intent)?.locations.orEmpty()
       intent.hasExtra(LocationManager.KEY_LOCATION_CHANGED) -> {
@@ -36,8 +42,7 @@ class MunimLocationReceiver : BroadcastReceiver() {
       }
       else -> emptyList()
     }
-    if (locations.isEmpty()) return
-    LocationEvents.deliverBackground(context, name, LocationJson.locations(locations))
+    LocationEvents.deliverBackgroundLocations(context, source, locations)
   }
 
   private fun deliverGeofence(context: Context, intent: Intent) {

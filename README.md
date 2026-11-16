@@ -98,12 +98,13 @@ Add the config plugin to `app.json`:
 | `locationAlwaysAndWhenInUsePermission` | generic text | `NSLocationAlwaysAndWhenInUseUsageDescription`. `false` leaves it alone. |
 | `locationAlwaysPermission` | not set | Legacy `NSLocationAlwaysUsageDescription`. |
 | `temporaryFullAccuracyPurposes` | not set | `NSLocationTemporaryUsageDescriptionDictionary` (keys are purpose keys). |
-| `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter). `false` skips it. |
+| `motionPermission` | generic text | `NSMotionUsageDescription` (altimeter, motion activity, `pauseWhenStationary`). `false` skips it. |
 | `isIosBackgroundLocationEnabled` | `false` | Adds `location` to `UIBackgroundModes`. |
 | `iosLocationPushEntitlement` | `false` | Adds the `com.apple.developer.location.push` entitlement for `startMonitoringLocationPushes()`, and `aps-environment: development` when nothing else set it (iOS issues tokens only with an APNs environment). The Location Push Service Extension is a separate target; see [docs/location-push.md](docs/location-push.md). |
 | `androidPermissions` | `['fine', 'coarse']` | Any of `fine`, `coarse`, `background`; `false` manages them yourself. |
 | `isAndroidBackgroundLocationEnabled` | `false` | Adds `ACCESS_BACKGROUND_LOCATION`. |
 | `isAndroidForegroundServiceEnabled` | same as background | Adds `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`. |
+| `isAndroidActivityRecognitionEnabled` | `false` | Adds `ACTIVITY_RECOGNITION` (and the Play services permission for Android 9 and below) for motion activity and `pauseWhenStationary`. |
 | `androidBootReceiver` | `false` | Adds `RECEIVE_BOOT_COMPLETED` so tracking and geofences resume after reboot. |
 | `androidNotificationTitle`, `androidNotificationText`, `androidNotificationChannelId`, `androidNotificationChannelName`, `androidNotificationIcon`, `androidNotificationColor` | built-in | Foreground-service notification defaults (manifest meta-data). Per-call `startBackgroundUpdates({ android })` values win. |
 
@@ -158,6 +159,9 @@ The library does not merge location permissions into your app. Declare only what
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 <!-- Resume tracking and geofences after reboot -->
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<!-- Motion activity and pauseWhenStationary (Android 10+ runtime / 9 and below install-time) -->
+<uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+<uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
 ```
 
 The library manifest declares its own components: the `location`-type foreground service, the Headless JS service, the PendingIntent receiver, and the boot receiver (which only fires when your app holds `RECEIVE_BOOT_COMPLETED`). It also adds `WAKE_LOCK` for Headless JS.
@@ -166,7 +170,7 @@ The library manifest declares its own components: the `location`-type foreground
 
 Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_LOCATION` and a granted location permission; `startBackgroundUpdates()` checks the manifest first and rejects with `E_FOREGROUND_SERVICE`. Google Play asks apps that declare `ACCESS_BACKGROUND_LOCATION` or a `location` foreground service to justify it in the Play Console.
 
-**Build defaults.** The Android library compiles against `compileSdk` 37 with `minSdk` 24, matching React Native 0.87 (AGP 9.2, Kotlin 2.2), and depends on `com.google.android.gms:play-services-location`. An app's `rootProject.ext` values (`compileSdkVersion`, `minSdkVersion`, `targetSdkVersion`, `ndkVersion`) override them. Without Google Play services the package falls back to `LocationManager` for positions; geofencing, the settings dialog, and the fused orientation provider need Google Play services.
+**Build defaults.** The Android library compiles against `compileSdk` 37 with `minSdk` 24, matching React Native 0.88 (AGP 9.2, Kotlin 2.2), and depends on `com.google.android.gms:play-services-location`. An app's `rootProject.ext` values (`compileSdkVersion`, `minSdkVersion`, `targetSdkVersion`, `ndkVersion`) override them. Without Google Play services the package falls back to `LocationManager` for positions; geofencing, the settings dialog, and the fused orientation provider need Google Play services.
 
 ## Table of contents
 
@@ -211,6 +215,8 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 - 🎚️ **expo-location Presets**: `Accuracy.Low` / `Balanced` / `High` (and `Lowest`, `Highest`, `BestForNavigation`), plus `subscribeToPosition()` / `subscribeToHeading()` handles with `remove()`
 - 🔁 **Continuous Updates**: distance filter, interval, fastest interval, batching (`maxUpdateDelayMs`), max update age, update count, granularity, iOS activity type and auto-pause
 - ✨ **iOS 17+ Live Updates**: `CLLocationUpdate.liveUpdates` with stationary and accuracy diagnostics
+- 🔋 **Native Batching**: `batchSize` / `batchIntervalMs` buffer fixes natively and wake JavaScript once per batch (`subscribeToPositionBatches()`, `flushLocations()`); fixes cross the bridge as typed structs, never JSON
+- 🛑 **Pause When Stationary**: `pauseWhenStationary` drops watches and background updates to a low-power request while the motion coprocessor says the device is still, and restores them when it moves
 - 📦 **Full Location Object**: altitude (ellipsoidal on iOS 15+, MSL on Android 14+), vertical / speed / course accuracy, floor, provider, elapsed realtime, satellite count, mock and simulated flags
 
 ### Background and Terminated Delivery
@@ -230,7 +236,8 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 
 - 🧭 **Compass**: magnetic and true heading, accuracy, heading filter, device orientation, iOS calibration overlay; Android Fused Orientation Provider (13+) or rotation-vector sensor
 - ⛰️ **Altimeter**: iOS `CMAltimeter` relative and absolute altitude, Android pressure sensor
-- 🛰️ **GNSS (Android)**: satellites (constellation, C/N0, elevation, azimuth, used in fix, almanac / ephemeris, carrier frequency), time to first fix, NMEA, hardware model / year, capabilities, and opt-in raw measurements and navigation messages
+- 🏃 **Motion Activity**: still / walking / running / cycling / automotive with confidence (iOS `CMMotionActivityManager`, Android Activity Recognition transitions), permission helpers
+- 🛰️ **GNSS (Android)**: satellites (constellation, C/N0, elevation, azimuth, used in fix, almanac / ephemeris, carrier frequency), time to first fix, NMEA, hardware model / year, capabilities, and opt-in raw measurements, navigation messages, and antenna info (Android 11+)
 
 ### Geocoding and Utilities
 
@@ -261,7 +268,9 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 | Background updates | ✅ | ✅ | iOS: `location` background mode. Android: `location` foreground service (Android 14+ needs `FOREGROUND_SERVICE_LOCATION`) or PendingIntent delivery (throttled to a few updates per hour in the background). |
 | Significant-change monitoring | ✅ | ➖ | Android has no equivalent API; the package uses a low-power ~500 m / 5 min PendingIntent request. |
 | Visits (`CLVisit`) | ✅ | ❌ | No Android equivalent; rejects with `E_UNSUPPORTED`. |
-| Deferred / batched delivery | ➖ | ✅ | Android `maxUpdateDelayMs`. Apple removed deferred updates in iOS 13; iOS delivers each fix. |
+| Deferred / batched delivery | ✅ | ✅ | `batchSize` / `batchIntervalMs` buffer fixes natively on both platforms and hand them to JavaScript in one call (`subscribeToPositionBatches()`, `flushLocations()`). Android also has hardware batching (`maxUpdateDelayMs`, flushed by `flushLocations()`). The buffer is in memory: Android PendingIntent mode, where the process can die between fixes, uses `maxUpdateDelayMs` only. |
+| Pause when stationary | ✅ | ✅ | `pauseWhenStationary` on watches and background updates. iOS: drops to 3 km accuracy with no deliveries (updates stay on, so the app keeps running in the background). Android: drops to a passive request. Needs motion permission; ignored with `useLiveUpdates` (iOS pauses live updates itself). Emits `locationUpdatesPaused` / `locationUpdatesResumed` with `source: 'motion'`. |
+| Motion activity | ✅ | ✅ | iOS `CMMotionActivityManager` (every change, low / medium / high confidence; needs `NSMotionUsageDescription`). Android Activity Recognition transition API (Google Play services, `ACTIVITY_RECOGNITION` on Android 10+): reported on each confident transition, `confidence: 'high'`. |
 | Headless / terminated delivery | ✅ | ✅ | iOS relaunches for significant changes, visits, and regions (not for standard updates). Android Headless JS from receivers and the foreground service. |
 | Resume after reboot | ➖ | ✅ | Android `BOOT_COMPLETED` (needs `RECEIVE_BOOT_COMPLETED`). iOS resumes significant changes, visits, and regions itself; background updates resume when the app next launches. |
 | Location push | ✅ | ❌ | iOS 15+ APNs `location` pushes wake your Location Push Service Extension (needs the `com.apple.developer.location.push` entitlement and Always access). Android has no equivalent; use an FCM data message and `getCurrentPosition()`. |
@@ -271,6 +280,7 @@ Android 14+ refuses a `location` foreground service without `FOREGROUND_SERVICE_
 | Compass heading | ✅ | ✅ | Android 13+ Fused Orientation Provider when Google Play services is present, otherwise the rotation-vector sensor. |
 | Altimeter | ✅ | ✅ | iOS `CMAltimeter` (absolute altitude on iOS 15+, needs `NSMotionUsageDescription`). Android pressure sensor (standard-atmosphere estimate). |
 | GNSS status, NMEA, raw measurements | ❌ | ✅ | iOS has no public GNSS API. Raw measurements and navigation messages are opt-in. |
+| GNSS antenna info | ❌ | ✅ | Android 11+ `GnssAntennaInfo` (phase-centre offsets), opt-in with `startGnssUpdates({ antennaInfo: true })`; rejects with `E_UNSUPPORTED` when the chipset does not report it. |
 | Geocoding | ✅ | ✅ | iOS 26+ MapKit requests, `CLGeocoder` before (deprecated in iOS 26). Android `Geocoder` needs a backend (Google Play services devices). |
 
 Call `getCapabilities()` at runtime when you need optional behavior. Support still varies by OS version, hardware, permissions, and app state.
@@ -384,6 +394,48 @@ const subscription = subscribeToPosition(
 
 // Later:
 subscription.remove()
+```
+
+### Battery-friendly tracking
+
+Each fix that wakes JavaScript costs a bridge hop and a JS-thread task. With
+`batchSize` / `batchIntervalMs` the native side buffers fixes and hands them
+over in one call, as typed Nitro structs (no JSON on either side):
+
+```typescript
+import { flushLocations, subscribeToPositionBatches } from 'munim-location'
+
+const subscription = subscribeToPositionBatches(
+  (locations) => upload(locations), // oldest first
+  {
+    accuracy: 'nearestTenMeters',
+    distanceFilter: 10,
+    batchSize: 20, // hand over every 20 fixes...
+    batchIntervalMs: 60_000, // ...or 60 s after the first buffered one
+    maxUpdateDelayMs: 60_000, // Android: let the GNSS chip batch while the CPU sleeps
+    pauseWhenStationary: true, // low-power request while the device is still
+  }
+)
+
+await flushLocations() // e.g. when the app goes to the background
+subscription.remove()
+```
+
+The same options work for `watchPosition()` (its callback still runs once per
+fix) and `startBackgroundUpdates()`. `pauseWhenStationary` needs motion
+permission (`requestMotionPermission()`); without it the request is left as is
+and a `motionActivityError` event says why.
+
+### Motion activity
+
+```typescript
+import { requestMotionPermission, subscribeToMotionActivity } from 'munim-location'
+
+if ((await requestMotionPermission()) === 'granted') {
+  const subscription = subscribeToMotionActivity((activity) => {
+    console.log(activity.type, activity.confidence) // 'walking' 'high'
+  })
+}
 ```
 
 ### Geofences
@@ -663,15 +715,25 @@ The most recent cached fix, filtered by `maximumAgeMs` and `requiredAccuracy` (m
 
 Continuous updates; returns a watch id.
 
-**Options** (all optional): `accuracy`, `priority`, `granularity`, `distanceFilter` (metres), `intervalMs` (default `5000`), `fastestIntervalMs`, `maxUpdateDelayMs` (Android batching), `minUpdateAgeMs`, `maxUpdates`, `waitForAccurateLocation` (Android), `activityType` (`other` | `automotiveNavigation` | `fitness` | `otherNavigation` | `airborne` | `maritime`; iOS, `maritime` needs iOS 27), `pausesLocationUpdatesAutomatically` (iOS), `useLiveUpdates` (iOS 17+ `CLLocationUpdate.liveUpdates`), `allowsBackgroundLocationUpdates` and `showsBackgroundLocationIndicator` (iOS).
+**Options** (all optional): `accuracy`, `priority`, `granularity`, `distanceFilter` (metres), `intervalMs` (default `5000`), `fastestIntervalMs`, `maxUpdateDelayMs` (Android batching), `minUpdateAgeMs`, `maxUpdates`, `waitForAccurateLocation` (Android), `activityType` (`other` | `automotiveNavigation` | `fitness` | `otherNavigation` | `airborne` | `maritime`; iOS, `maritime` needs iOS 27), `pausesLocationUpdatesAutomatically` (iOS), `useLiveUpdates` (iOS 17+ `CLLocationUpdate.liveUpdates`), `allowsBackgroundLocationUpdates` and `showsBackgroundLocationIndicator` (iOS), `batchSize` / `batchIntervalMs` (native delivery batching, both platforms; default `0` = every fix right away), `pauseWhenStationary` (both platforms, default `false`; see [Battery-friendly tracking](#battery-friendly-tracking)).
+
+`onLocation` runs once per fix, also when fixes arrive as a batch.
 
 #### `subscribeToPosition(onLocation, options?, onError?)`
 
 `watchPosition()` with a handle: returns `{ watchId, remove() }`. Same options. `remove()` stops the watch and is safe to call twice.
 
+#### `subscribeToPositionBatches(onLocations, options?, onError?)`
+
+Like `subscribeToPosition()`, but `onLocations` receives each native batch at once (oldest first): one JavaScript wake-up per `batchSize` fixes (default `10`) or per `batchIntervalMs` after the first buffered fix (default `30000`). Returns `{ watchId, remove() }`.
+
+#### `flushLocations()`
+
+Hands buffered fixes over now (watches and background updates). Android also asks the Fused Location Provider to deliver its `maxUpdateDelayMs` batches. **Returns:** `Promise<void>`
+
 #### `clearWatch(watchId)`, `clearAllWatches()`
 
-Stop one or every watch.
+Stop one or every watch. Fixes still buffered for that watch are dropped.
 
 #### `Location`
 
@@ -713,7 +775,7 @@ Read or drop events persisted while no JavaScript listener was attached (at most
 
 #### `startBackgroundUpdates(options?)`
 
-Continuous updates that keep running in the background and arrive as `backgroundLocation`. Takes the `watchPosition` options (with `allowsBackgroundLocationUpdates: true` and `intervalMs: 10000` by default) plus `android`:
+Continuous updates that keep running in the background and arrive as `backgroundLocation`. Takes the `watchPosition` options (with `allowsBackgroundLocationUpdates: true` and `intervalMs: 10000` by default; `batchSize` / `batchIntervalMs` group the fixes into fewer `backgroundLocation` events and headless tasks, and `pauseWhenStationary` saves battery while the device is still) plus `android`:
 
 - `mode` (`foregroundService` default | `pendingIntent`)
 - `notificationTitle`, `notificationText`, `notificationChannelId`, `notificationChannelName`, `notificationIconResourceName`, `notificationColor` (`#RRGGBB`)
@@ -735,7 +797,7 @@ iOS `CLVisit` monitoring; visits arrive as `visit` with `arrivalTimestamp` / `de
 
 #### `getBackgroundStatus()`
 
-**Returns:** `BackgroundStatus` — `{ running, mode, significantChanges, visits, geofenceCount, pendingEventCount }`.
+**Returns:** `BackgroundStatus` — `{ running, mode, significantChanges, visits, geofenceCount, pendingEventCount, stationaryPaused }`.
 
 ### Geofencing
 
@@ -796,6 +858,24 @@ iOS: hides the calibration overlay.
 
 Barometric altitude as `altitude` events. iOS: `kind: 'relative'` (`relativeAltitude`, `pressure` in kPa) and, with `absolute: true` on iOS 15+, `kind: 'absolute'` (`altitude`, `accuracy`, `precision`). Android: `kind: 'pressure'` (`pressure`, `altitude` from the standard atmosphere, `relativeAltitude`). iOS emits `altitudeError` with `E_MOTION_PERMISSION_PENDING` / `E_MOTION_PERMISSION_DENIED` while Motion & Fitness access is missing.
 
+### Motion Activity
+
+#### `getMotionPermission()`, `requestMotionPermission()`
+
+**Returns:** `Promise<'notDetermined' | 'granted' | 'denied' | 'restricted' | 'unavailable'>`. iOS: Motion & Fitness (`requestMotionPermission()` shows the prompt; needs `NSMotionUsageDescription`). Android 10+: `ACTIVITY_RECOGNITION` runtime permission (rejects with `E_MOTION_PERMISSION_DENIED` when the manifest does not declare it); Android 9 and below: granted when the Play services permission is declared. `unavailable`: no motion coprocessor (iOS) or no Google Play services (Android).
+
+#### `subscribeToMotionActivity(onActivity, onError?)`
+
+Motion activity changes with a handle: returns `{ remove() }`. `onActivity` gets `{ type, confidence, timestamp }` with `type` one of `still`, `walking`, `running`, `cycling`, `automotive`, `unknown`. iOS reports every change with `low` / `medium` / `high` confidence; Android reports each confident transition (`high`) and nothing until the first one.
+
+#### `startMotionActivityUpdates()`, `stopMotionActivityUpdates()`
+
+The same stream as `motionActivity` events. Rejects with `E_MOTION_PERMISSION_DENIED` or `E_UNSUPPORTED`.
+
+#### `getLastMotionActivity()`
+
+**Returns:** `Promise<MotionActivity | undefined>` — the latest activity this process has seen.
+
 ### GNSS (Android)
 
 #### `getGnssInfo()`
@@ -804,7 +884,7 @@ Barometric altitude as `altitude` events. iOS: `kind: 'relative'` (`relativeAlti
 
 #### `startGnssUpdates(options?)`, `stopGnssUpdates()`
 
-Needs fine location and keeps a GPS request open while running (GNSS callbacks only report while the engine runs). Options: `status` (default `true`: `gnssStatus`, `gnssFirstFix`, `gnssStarted`, `gnssStopped`), `nmea` (`nmea`), and the opt-in high-rate streams `measurements` (`gnssMeasurements`) and `navigationMessages` (`gnssNavigationMessage`). iOS rejects with `E_UNSUPPORTED`.
+Needs fine location and keeps a GPS request open while running (GNSS callbacks only report while the engine runs). Options: `status` (default `true`: `gnssStatus`, `gnssFirstFix`, `gnssStarted`, `gnssStopped`), `nmea` (`nmea`), the opt-in high-rate streams `measurements` (`gnssMeasurements`) and `navigationMessages` (`gnssNavigationMessage`), and `antennaInfo` (Android 11+, `gnssAntennaInfo`: carrier frequency and phase-centre offset per antenna; rejects with `E_UNSUPPORTED` when the chipset does not report it). iOS rejects with `E_UNSUPPORTED`.
 
 ### Geocoding
 
@@ -846,7 +926,7 @@ Services on, permission granted, and (Android) a provider able to report.
 
 #### `getCapabilities()`
 
-**Returns:** `Promise<LocationCapabilities>` — `platform`, `osVersion`, `locationServicesEnabled`, `headingAvailable`, `significantChangeAvailable`, `visitsAvailable`, `regionMonitoringAvailable`, `maxMonitoredRegions`, `geofencingEngine` (`clmonitor`, `regionMonitoring`, `geofencingClient`, `none`), `beaconRangingAvailable`, `beaconMonitoringAvailable`, `liveUpdatesAvailable`, `serviceSessionAvailable`, `backgroundActivitySessionAvailable`, `temporaryFullAccuracyAvailable`, `altimeterAvailable`, `absoluteAltitudeAvailable`, `gnssStatusAvailable`, `nmeaAvailable`, `gnssMeasurementsAvailable`, `gnssNavigationMessagesAvailable`, `fusedLocationAvailable`, `fusedOrientationAvailable`, `geocoderAvailable`, `mockLocationAvailable`, `backgroundLocationModeEnabled`, `locationPushAvailable`.
+**Returns:** `Promise<LocationCapabilities>` — `platform`, `osVersion`, `locationServicesEnabled`, `headingAvailable`, `significantChangeAvailable`, `visitsAvailable`, `regionMonitoringAvailable`, `maxMonitoredRegions`, `geofencingEngine` (`clmonitor`, `regionMonitoring`, `geofencingClient`, `none`), `beaconRangingAvailable`, `beaconMonitoringAvailable`, `liveUpdatesAvailable`, `serviceSessionAvailable`, `backgroundActivitySessionAvailable`, `temporaryFullAccuracyAvailable`, `altimeterAvailable`, `absoluteAltitudeAvailable`, `gnssStatusAvailable`, `nmeaAvailable`, `gnssMeasurementsAvailable`, `gnssNavigationMessagesAvailable`, `fusedLocationAvailable`, `fusedOrientationAvailable`, `geocoderAvailable`, `mockLocationAvailable`, `backgroundLocationModeEnabled`, `locationPushAvailable`, `motionActivityAvailable`, `gnssAntennaInfoAvailable`.
 
 #### `getDistance(from, to)`, `getBearing(from, to)`, `getDestination(from, bearing, distance)`, `isPointWithinRadius(point, center, radius)`
 
@@ -861,7 +941,7 @@ Use `addEventListener(eventName, callback)`; it returns an unsubscribe function.
 | `location` | `{ watchId, locations }` for `watchPosition()` (the callback form is usually simpler). |
 | `locationError` | `{ code, message, watchId?, source? }` |
 | `locationAvailability` | Android: `{ watchId?, available }` |
-| `locationUpdatesPaused`, `locationUpdatesResumed` | iOS auto-pause: `{ watchId?, source? }` |
+| `locationUpdatesPaused`, `locationUpdatesResumed` | iOS auto-pause and `pauseWhenStationary` (`source: 'motion'`, both platforms): `{ watchId?, source? }` |
 | `liveUpdateDiagnostic` | iOS 17+: `{ watchId, stationary?, insufficientlyInUse?, locationUnavailable?, accuracyLimited?, authorizationDenied?, authorizationDeniedGlobally?, authorizationRestricted?, authorizationRequestInProgress?, serviceSessionRequired? }` |
 | `authorizationChanged` | `PermissionStatus` when permission or the services switch changes (Android checks on resume). |
 | `providerChanged` | `{ locationServicesEnabled, gpsEnabled?, networkEnabled? }` |
@@ -879,6 +959,8 @@ Use `addEventListener(eventName, callback)`; it returns an unsubscribe function.
 | `gnssStatus`, `gnssFirstFix`, `gnssStarted`, `gnssStopped`, `nmea`, `gnssMeasurements`, `gnssNavigationMessage` | Android GNSS streams |
 | `serviceSessionDiagnostic`, `backgroundActivitySessionDiagnostic` | iOS 18 session diagnostics |
 | `locationSettingsResolved` | Android: `{ satisfied }` after the settings dialog |
+| `motionActivity`, `motionActivityError` | `{ type, confidence, timestamp }`; `{ code, message, source? }` (for example `pauseWhenStationary` without permission) |
+| `gnssAntennaInfo` | Android 11+: `{ antennas: [{ carrierFrequencyMHz, phaseCenterOffset: { x, xUncertainty, y, yUncertainty, z, zUncertainty }, hasPhaseCenterVariationCorrections, hasSignalGainCorrections }], timestamp }` |
 
 ## 🔍 Troubleshooting
 
