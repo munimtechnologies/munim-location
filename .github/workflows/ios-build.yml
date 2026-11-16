@@ -103,13 +103,17 @@ jobs:
           path: |
             ~/.cocoapods/repos
             example/ios/Pods
-          key: ${{ runner.os }}-xcode${{ matrix.xcode }}-pods-${{ hashFiles('example/ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode${{ matrix.xcode }}-pods-
+          # node_modules podspecs (React Native, Nitro) change with package-lock.json
+          # while Podfile.lock may lag, so both are part of the key; no prefix
+          # fallback, because stale Pods/Local Podspecs make `pod install` fail.
+          key: ${{ runner.os }}-xcode${{ matrix.xcode }}-pods-${{ hashFiles('example/ios/Podfile.lock', 'package-lock.json', '*.podspec') }}
 
       - name: Install Pods
         working-directory: example/ios
-        run: pod install
+        run: |
+          pod install
+          # Shows what a committed Podfile.lock is missing.
+          git --no-pager diff -- Podfile.lock || true
 
       - name: Build App
         working-directory: example/ios

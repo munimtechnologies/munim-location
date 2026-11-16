@@ -375,13 +375,18 @@ function dispatchLocations(
   notify(BATCH_EVENT_NAMES[source], { locations })
 }
 
-function dispatch(name: string, payloadText: string) {
-  let payload: unknown
+/** Parses a JSON event payload; empty or malformed text becomes `{}`. */
+function parsePayload(text: string | undefined): unknown {
+  if (!text) return {}
   try {
-    payload = payloadText ? JSON.parse(payloadText) : {}
+    return JSON.parse(text)
   } catch {
-    payload = {}
+    return {}
   }
+}
+
+function dispatch(name: string, payloadText: string) {
+  const payload = parsePayload(payloadText)
   if (name === 'location') {
     const event = payload as LocationEventMap['location']
     deliverToWatch(event.watchId, event.locations)
@@ -502,15 +507,9 @@ export function registerBackgroundHandler(handler: BackgroundHandler): () => voi
       HEADLESS_TASK_NAME,
       () => async (data: { name?: string; payload?: string; timestamp?: number }) => {
         if (!data?.name) return
-        let payload: unknown = {}
-        try {
-          payload = data.payload ? JSON.parse(data.payload) : {}
-        } catch {
-          payload = {}
-        }
         await runBackgroundHandler({
           name: data.name,
-          payload,
+          payload: parsePayload(data.payload),
           timestamp: data.timestamp ?? Date.now(),
           replayed: false,
           headless: true,
@@ -549,15 +548,11 @@ export function getPendingBackgroundEvents(): Array<{
       payload: string
       timestamp: number
     }>
-    return raw.map((event) => {
-      let payload: unknown = {}
-      try {
-        payload = JSON.parse(event.payload)
-      } catch {
-        payload = {}
-      }
-      return { name: event.name, payload, timestamp: event.timestamp }
-    })
+    return raw.map((event) => ({
+      name: event.name,
+      payload: parsePayload(event.payload),
+      timestamp: event.timestamp,
+    }))
   } catch {
     return []
   }
