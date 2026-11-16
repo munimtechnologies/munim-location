@@ -703,7 +703,7 @@ One-shot position.
 
 #### `Accuracy`
 
-Presets with expo-location's meaning, usable anywhere an `accuracy` option is: `Accuracy.Lowest` (`threeKilometers`), `Low` (`kilometer`), `Balanced` (`hundredMeters`), `High` (`nearestTenMeters`), `Highest` (`best`), `BestForNavigation` (`bestForNavigation`). With `priority: 'auto'` Android maps them to low power, balanced, and high accuracy like Expo.
+Presets with expo-location's meaning, usable anywhere an `accuracy` option is: `Accuracy.Lowest` (`threeKilometers`), `Low` (`kilometer`), `Balanced` (`hundredMeters`), `High` (`nearestTenMeters`), `Highest` (`best`), `BestForNavigation` (`bestForNavigation`). With `priority: 'auto'` Android maps them to low power, balanced, and high accuracy like Expo. A low-power one-shot request (`getCurrentPosition`, or the first fix of a watch) that has no fix after half its duration (1–10 s) is asked once more at balanced power for the rest of it: low power only uses cell towers and Wi-Fi scans already made, so a Wi-Fi-only phone without a SIM can otherwise get no fix at all. The retry is one Wi-Fi / cell lookup, never GNSS.
 
 #### `getLastKnownPosition(options?)`
 
