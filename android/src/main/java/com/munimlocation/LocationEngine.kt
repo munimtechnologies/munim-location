@@ -39,6 +39,7 @@ import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.LocationSettingsStatusCodes
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.android.gms.tasks.Task
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.munimlocation.AndroidBackgroundMode
 import com.margelo.nitro.munimlocation.AndroidBackgroundOptions
@@ -56,9 +57,11 @@ import com.margelo.nitro.munimlocation.ProviderStatus
 import com.margelo.nitro.munimlocation.WatchOptions
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Process-wide location engine shared by the Nitro object, the foreground
@@ -211,6 +214,143 @@ object LocationEngine {
 
   // ---------- Positions ----------
 
+  /**
+   * How long a low-power or balanced fused request looks alone before the
+   * fallback is asked as well: a third of its budget, between 1 s and 5 s.
+   */
+  private fun fallbackGraceMs(budgetMs: Long): Long = (budgetMs / 3).coerceIn(1_000L, 5_000L)
+
+  /**
+   * One fused `getCurrentLocation`. [onResult] or [onError] runs at most
+   * once, on the engine thread; the returned function cancels the request.
+   *
+   * Low-power and balanced requests (Accuracy.Lowest / Low / Balanced,
+   * reduced) do not turn on GNSS, and Play services holds such one-shot
+   * requests back while the device lies still ("stationary throttling"):
+   * low power only uses cell towers and Wi-Fi scans that were already made,
+   * and even a balanced request may answer only at the end of its duration,
+   * or not at all. On a Wi-Fi-only Galaxy A14 (no SIM) a Low request never
+   * got a fix, and Balanced came back empty after 5, 15 and 30 s or just
+   * before a 15 s timeout.
+   *
+   * So when such a request has no fix after [fallbackGraceMs] (or ends empty
+   * sooner), the platform network provider is asked once as well: Wi-Fi /
+   * cell positioning, never GNSS, and not subject to that throttling (it may
+   * answer with a recent fix it already has, seen up to ~20 s old). The fused request
+   * keeps running; the first fix wins. With coarse
+   * granularity the fix must come from the fused provider (which coarsens
+   * it), so a low-power request asks it again at balanced power instead and
+   * a balanced one has no fallback.
+   */
+  private fun fusedCurrentLocation(
+    context: Context,
+    priority: Int,
+    granularity: Int,
+    maxUpdateAgeMs: Long,
+    durationMs: Long,
+    onResult: (android.location.Location?) -> Unit,
+    onError: (Throwable) -> Unit
+  ): () -> Unit {
+    val settled = AtomicBoolean(false)
+    val cancelled = AtomicBoolean(false)
+    val tokens = CopyOnWriteArrayList<CancellationTokenSource>()
+    val signals = CopyOnWriteArrayList<android.os.CancellationSignal>()
+    val settle: (android.location.Location?, Throwable?) -> Unit = { location, error ->
+      if (!cancelled.get() && settled.compareAndSet(false, true)) {
+        if (error != null) onError(error) else onResult(location)
+      }
+    }
+    val request: (Int, Long) -> Task<android.location.Location> = { p, duration ->
+      val token = CancellationTokenSource()
+      tokens.add(token)
+      val built = CurrentLocationRequest.Builder()
+        .setPriority(p)
+        .setGranularity(granularity)
+        .setMaxUpdateAgeMillis(maxUpdateAgeMs)
+        .setDurationMillis(duration.coerceAtLeast(1_000L))
+        .build()
+      fused(context).getCurrentLocation(built, token.token)
+    }
+    val cancel: () -> Unit = {
+      cancelled.set(true)
+      tokens.forEach { it.cancel() }
+      signals.forEach { it.cancel() }
+    }
+
+    val coarse = granularity == Granularity.GRANULARITY_COARSE
+    val hasFallback = priority == Priority.PRIORITY_LOW_POWER ||
+      (priority == Priority.PRIORITY_BALANCED_POWER_ACCURACY && !coarse)
+    val graceMs = fallbackGraceMs(durationMs)
+    if (!hasFallback || graceMs >= durationMs) {
+      request(priority, durationMs)
+        .addOnSuccessListener(executor) { settle(it, null) }
+        .addOnFailureListener(executor) { settle(null, it) }
+      return cancel
+    }
+
+    // Two attempts (the fused request and the fallback); null or the first
+    // error once both came back empty.
+    val pending = AtomicInteger(2)
+    val firstError = AtomicReference<Throwable?>(null)
+    val missed: (Throwable?) -> Unit = { error ->
+      if (error != null) firstError.compareAndSet(null, error)
+      if (pending.decrementAndGet() == 0) settle(null, firstError.get())
+    }
+    val fallbackStarted = AtomicBoolean(false)
+    val startedAt = SystemClock.elapsedRealtime()
+    val fallback: () -> Unit = fallback@{
+      if (cancelled.get() || settled.get() || !fallbackStarted.compareAndSet(false, true)) return@fallback
+      val manager = locationManager(context)
+      val network = !coarse &&
+        runCatching { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)
+      val lowPower = priority == Priority.PRIORITY_LOW_POWER
+      Log.d(
+        TAG,
+        "${if (lowPower) "low-power" else "balanced"} request has no fix after " +
+          "${SystemClock.elapsedRealtime() - startedAt} ms; " +
+          if (network) "asking the network provider" else if (lowPower) "asking fused at balanced power" else "no fallback"
+      )
+      if (network) {
+        val signal = android.os.CancellationSignal()
+        signals.add(signal)
+        try {
+          LocationManagerCompat.getCurrentLocation(manager, LocationManager.NETWORK_PROVIDER, signal, executor) { location ->
+            Log.d(TAG, "network provider: ${if (location == null) "no fix" else "fix, ${ageMs(location).toLong()} ms old"} after ${SystemClock.elapsedRealtime() - startedAt} ms")
+            if (location != null) settle(location, null) else missed(null)
+          }
+        } catch (error: Throwable) {
+          missed(error)
+        }
+      } else if (lowPower) {
+        val remaining = durationMs - (SystemClock.elapsedRealtime() - startedAt)
+        request(Priority.PRIORITY_BALANCED_POWER_ACCURACY, remaining)
+          .addOnSuccessListener(executor) { if (it != null) settle(it, null) else missed(null) }
+          .addOnFailureListener(executor) { missed(it) }
+      } else {
+        missed(null)
+      }
+    }
+    val timer = Runnable { fallback() }
+    request(priority, durationMs)
+      .addOnSuccessListener(executor) { location ->
+        if (location != null) {
+          settle(location, null)
+        } else {
+          fallback()
+          missed(null)
+        }
+      }
+      .addOnFailureListener(executor) { error ->
+        fallback()
+        missed(error)
+      }
+    handler.postDelayed(timer, graceMs)
+    return {
+      handler.removeCallbacks(timer)
+      cancel()
+    }
+  }
+
   fun currentPosition(options: CurrentPositionOptions, resolve: (Location) -> Unit, reject: (Throwable) -> Unit) {
     val context = context()
     try {
@@ -233,20 +373,18 @@ object LocationEngine {
     val priority = priority(options.priority, options.accuracy)
 
     if (playServicesAvailable(context)) {
-      val tokenSource = CancellationTokenSource()
-      val builder = CurrentLocationRequest.Builder()
-        .setPriority(priority)
-        .setGranularity(granularity(options.granularity, options.accuracy))
-        .setDurationMillis((if (options.durationMs > 0) options.durationMs else options.timeoutMs).toLong().coerceAtLeast(1_000))
-        .setMaxUpdateAgeMillis(options.maximumAgeMs.toLong().coerceAtLeast(0))
-      fused(context).getCurrentLocation(builder.build(), tokenSource.token)
-        .addOnSuccessListener(executor) { location ->
-          finish(location?.let { LocationJson.location(it) }, null)
-        }
-        .addOnFailureListener(executor) { error -> finish(null, mapError(error)) }
+      val cancel = fusedCurrentLocation(
+        context,
+        priority = priority,
+        granularity = granularity(options.granularity, options.accuracy),
+        maxUpdateAgeMs = options.maximumAgeMs.toLong().coerceAtLeast(0),
+        durationMs = (if (options.durationMs > 0) options.durationMs else options.timeoutMs).toLong().coerceAtLeast(1_000),
+        onResult = { location -> finish(location?.let { LocationJson.location(it) }, null) },
+        onError = { error -> finish(null, mapError(error)) }
+      )
       handler.postDelayed({
         if (!done.get()) {
-          tokenSource.cancel()
+          cancel()
           finish(null, LocationException("E_LOCATION_TIMEOUT", "Timed out waiting for a location"))
         }
       }, timeout)
@@ -365,18 +503,17 @@ object LocationEngine {
       // well under a second. The one-shot fix (a fresh enough cached fix, or a
       // new one at the same priority) opens the watch and counts as its first
       // delivery; it is dropped if the stream delivered first.
-      val firstFixToken = CancellationTokenSource()
-      entry.cancelFirstFix = { firstFixToken.cancel() }
-      val firstFixRequest = CurrentLocationRequest.Builder()
-        .setPriority(priority(options.priority, options.accuracy))
-        .setGranularity(granularity(options.granularity, options.accuracy))
-        .setMaxUpdateAgeMillis(firstFixMaxAgeMs(options))
-        .setDurationMillis(30_000L)
-        .build()
-      fused(context).getCurrentLocation(firstFixRequest, firstFixToken.token)
-        .addOnSuccessListener(executor) { location ->
+      entry.cancelFirstFix = fusedCurrentLocation(
+        context,
+        priority = priority(options.priority, options.accuracy),
+        granularity = granularity(options.granularity, options.accuracy),
+        maxUpdateAgeMs = firstFixMaxAgeMs(options),
+        durationMs = 30_000L,
+        onResult = { location ->
           if (location != null && delivered == 0 && watches[id] === entry) accept(listOf(location))
-        }
+        },
+        onError = {}
+      )
       if (options.pauseWhenStationary) {
         val gate = StationaryGate(context, "watch-$id") { paused ->
           if (watches[id] !== entry) return@StationaryGate
