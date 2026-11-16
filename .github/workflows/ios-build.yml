@@ -111,7 +111,7 @@ jobs:
       - name: Install Pods
         working-directory: example/ios
         run: |
-          pod install
+          pod install || pod update ReactNativeDependencies hermes-engine --no-repo-update
           # Shows what a committed Podfile.lock is missing.
           git --no-pager diff -- Podfile.lock || true
 
