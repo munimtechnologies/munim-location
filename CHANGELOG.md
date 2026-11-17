@@ -1,3 +1,9 @@
+## [0.4.1](https://github.com/munimtechnologies/munim-location/compare/v0.4.0...v0.4.1) (2026-11-17)
+
+### 🛠️ Other changes
+
+* **deps:** patch vulnerable dev dependencies (undici, addressable) ([#4](https://github.com/munimtechnologies/munim-location/issues/4)) ([e405949](https://github.com/munimtechnologies/munim-location/commit/e4059497a8f005bc033d01e11915f0fb9fa3afc8))
+
 ## [0.4.0](https://github.com/munimtechnologies/munim-location/compare/v0.3.1...v0.4.0) (2026-11-16)
 
 ### ✨ Features
